@@ -50,6 +50,7 @@ class RunnerSession:
                 "current_account": None,
                 "completed_accounts": 0,
                 "total_accounts": len(accounts),
+                "recent_requests": [],
             }
         self._thread = threading.Thread(
             target=self._run,
@@ -131,10 +132,10 @@ class RunnerSession:
                         if action in ("fill", "click"):
                             try:
                                 print(f"[RUNNER]   Waiting for selector: {target}")
-                                await page.wait_for_selector(target, timeout=5000)
+                                await page.wait_for_selector(target, timeout=30000)
                                 print(f"[RUNNER]   Selector found")
                             except PlaywrightTimeout:
-                                print(f"[RUNNER]   Selector NOT found (timeout)")
+                                print(f"[RUNNER]   Selector NOT found after 30s")
                                 pass
 
                         if src_account and tgt_account != src_account:
@@ -146,6 +147,28 @@ class RunnerSession:
                                 .replace("{{PASSWORD}}", password)
                                 .replace("{{USER}}", "orcanos.tech")
                             )
+
+                        # Per-step network capture
+                        step_req_starts: dict = {}
+                        step_requests: list = []
+
+                        def on_request(req, _starts=step_req_starts):
+                            if req.resource_type in ("xhr", "fetch"):
+                                _starts[req] = time.monotonic()
+
+                        def on_response(resp, _starts=step_req_starts, _reqs=step_requests, _step=step["name"], _acct=tgt_account):
+                            req = resp.request
+                            if req in _starts:
+                                dur = round((time.monotonic() - _starts.pop(req)) * 1000)
+                                path = urlparse(req.url).path
+                                entry = {"method": req.method, "url": path, "status": resp.status, "duration_ms": dur}
+                                _reqs.append(entry)
+                                run_state = self._runs.get(run_id)
+                                if run_state is not None and len(run_state["recent_requests"]) < 500:
+                                    run_state["recent_requests"].append({**entry, "step": _step, "account": _acct})
+
+                        page.on("request", on_request)
+                        page.on("response", on_response)
 
                         t_start = datetime.utcnow()
                         t0 = time.monotonic()
@@ -173,6 +196,9 @@ class RunnerSession:
                             error_msg = str(e)[:500]
                             print(f"[RUNNER]   ERROR: {error_msg}")
 
+                        page.remove_listener("request", on_request)
+                        page.remove_listener("response", on_response)
+
                         duration = time.monotonic() - t0
 
                         sr = StepResult(
@@ -184,6 +210,7 @@ class RunnerSession:
                             duration_seconds=round(duration, 3),
                             status="timeout" if step_timed_out else ("failed" if error_msg else _step_status(duration, pass_t, warn_t)),
                             error_message=error_msg,
+                            requests=step_requests or None,
                         )
                         db.add(sr)
                         db.commit()
