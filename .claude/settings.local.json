@@ -20,7 +20,8 @@
       "Bash(flyctl *)",
       "Bash(awk *)",
       "Bash(/c/AI Projects/orcanos-performance/.venv/Scripts/python *)",
-      "PowerShell(*)"
+      "PowerShell(*)",
+      "Bash(Select-Object -Last 60)"
     ]
   }
 }
