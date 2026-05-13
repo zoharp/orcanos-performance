@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import { fetchWithAuth, isAdmin } from '../auth'
 
 const API = ''
+const VERSIONS = ['6.0', '5.2.6']
 
 function extractAccountName(url) {
   try {
@@ -16,19 +18,23 @@ export default function Accounts() {
   const [accounts, setAccounts] = useState([])
   const [url, setUrl] = useState('')
   const [password, setPassword] = useState('')
+  const [version, setVersion] = useState('6.0')
   const [preview, setPreview] = useState('')
   const [message, setMessage] = useState(null)
   const [loading, setLoading] = useState(false)
 
+  const [editingAccount, setEditingAccount] = useState(null)
+  const [editForm, setEditForm] = useState({ name: '', url: '', password: '', version: '', enabled: true })
+  const [editMessage, setEditMessage] = useState(null)
+  const [editLoading, setEditLoading] = useState(false)
+
   useEffect(() => { loadAccounts() }, [])
 
-  useEffect(() => {
-    setPreview(extractAccountName(url))
-  }, [url])
+  useEffect(() => { setPreview(extractAccountName(url)) }, [url])
 
   async function loadAccounts() {
     try {
-      const res = await fetch(`${API}/api/accounts/`)
+      const res = await fetchWithAuth(`${API}/api/accounts/`)
       setAccounts(await res.json())
     } catch {}
   }
@@ -42,10 +48,10 @@ export default function Accounts() {
     setLoading(true)
     setMessage(null)
     try {
-      const res = await fetch(`${API}/api/accounts/`, {
+      const res = await fetchWithAuth(`${API}/api/accounts/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, url, password, enabled: true }),
+        body: JSON.stringify({ name, url, password, version, enabled: true }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -54,6 +60,7 @@ export default function Accounts() {
         setMessage({ type: 'success', text: `Account "${name}" added.` })
         setUrl('')
         setPassword('')
+        setVersion('')
         setPreview('')
         loadAccounts()
       }
@@ -63,25 +70,62 @@ export default function Accounts() {
     setLoading(false)
   }
 
+  function openEdit(a) {
+    setEditingAccount(a)
+    setEditForm({ name: a.name, url: a.url, password: '', version: a.version || '', enabled: a.enabled })
+    setEditMessage(null)
+  }
+
+  function closeEdit() {
+    setEditingAccount(null)
+    setEditMessage(null)
+  }
+
+  async function saveEdit(e) {
+    e.preventDefault()
+    if (!editForm.name.trim()) return setEditMessage({ type: 'error', text: 'Name is required.' })
+    if (!editForm.url.trim()) return setEditMessage({ type: 'error', text: 'URL is required.' })
+
+    setEditLoading(true)
+    setEditMessage(null)
+    try {
+      const res = await fetchWithAuth(`${API}/api/accounts/${editingAccount.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setEditMessage({ type: 'error', text: err.detail || 'Failed to update account.' })
+      } else {
+        closeEdit()
+        loadAccounts()
+      }
+    } catch {
+      setEditMessage({ type: 'error', text: 'Cannot reach backend.' })
+    }
+    setEditLoading(false)
+  }
+
   async function toggleAccount(id, enabled) {
     const acct = accounts.find(a => a.id === id)
     if (!acct) return
-    await fetch(`${API}/api/accounts/${id}`, {
+    await fetchWithAuth(`${API}/api/accounts/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: acct.name, url: acct.url, password: '', enabled: !enabled }),
+      body: JSON.stringify({ name: acct.name, url: acct.url, password: '', version: acct.version || '', enabled: !enabled }),
     })
     loadAccounts()
   }
 
   async function deleteAccount(id, name) {
     if (!confirm(`Delete account "${name}"?`)) return
-    await fetch(`${API}/api/accounts/${id}`, { method: 'DELETE' })
+    await fetchWithAuth(`${API}/api/accounts/${id}`, { method: 'DELETE' })
     loadAccounts()
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 860, margin: '0 auto' }}>
+    <div style={{ padding: 24, maxWidth: 920, margin: '0 auto' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Accounts</h1>
       <p style={{ color: '#6b7280', marginBottom: 24 }}>
         Add the Orcanos accounts to test. All accounts use the shared user <code>orcanos.tech</code>.
@@ -92,7 +136,7 @@ export default function Accounts() {
         <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Add Account</h2>
         <form onSubmit={addAccount}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-            <div style={{ flex: 2, minWidth: 240 }}>
+            <div style={{ flex: 3, minWidth: 240 }}>
               <label style={labelStyle}>Account URL</label>
               <input
                 style={inputStyle}
@@ -107,7 +151,7 @@ export default function Accounts() {
                 </div>
               )}
             </div>
-            <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ flex: 2, minWidth: 160 }}>
               <label style={labelStyle}>Password</label>
               <input
                 style={inputStyle}
@@ -117,6 +161,12 @@ export default function Accounts() {
                 placeholder="Account password"
                 required
               />
+            </div>
+            <div style={{ flex: 1, minWidth: 100 }}>
+              <label style={labelStyle}>Version</label>
+              <select style={{ ...inputStyle, cursor: 'pointer' }} value={version} onChange={e => setVersion(e.target.value)}>
+                {VERSIONS.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
             </div>
           </div>
 
@@ -143,9 +193,7 @@ export default function Accounts() {
 
       {/* Accounts list */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
-          Accounts ({accounts.length})
-        </h2>
+        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Accounts ({accounts.length})</h2>
         {accounts.length === 0 ? (
           <p style={{ color: '#9ca3af', fontSize: 14 }}>No accounts added yet.</p>
         ) : (
@@ -154,6 +202,7 @@ export default function Accounts() {
               <tr style={{ borderBottom: '1px solid #e5e7eb', color: '#6b7280', textAlign: 'left' }}>
                 <th style={thStyle}>Account</th>
                 <th style={thStyle}>URL</th>
+                <th style={thStyle}>Version</th>
                 <th style={thStyle}>Status</th>
                 <th style={thStyle}></th>
               </tr>
@@ -163,6 +212,7 @@ export default function Accounts() {
                 <tr key={a.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={tdStyle}><strong>{a.name}</strong></td>
                   <td style={{ ...tdStyle, color: '#6b7280', fontSize: 13 }}>{a.url}</td>
+                  <td style={{ ...tdStyle, color: '#6b7280', fontSize: 13 }}>{a.version || '—'}</td>
                   <td style={tdStyle}>
                     <span style={{
                       display: 'inline-block', padding: '2px 8px', borderRadius: 99, fontSize: 12, fontWeight: 600,
@@ -173,18 +223,13 @@ export default function Accounts() {
                     </span>
                   </td>
                   <td style={{ ...tdStyle, display: 'flex', gap: 6 }}>
-                    <button
-                      onClick={() => toggleAccount(a.id, a.enabled)}
-                      style={{ ...smallBtn, background: '#f3f4f6', color: '#374151' }}
-                    >
+                    <button onClick={() => openEdit(a)} style={{ ...smallBtn, background: '#eff6ff', color: '#2563eb' }}>Edit</button>
+                    <button onClick={() => toggleAccount(a.id, a.enabled)} style={{ ...smallBtn, background: '#f3f4f6', color: '#374151' }}>
                       {a.enabled ? 'Disable' : 'Enable'}
                     </button>
-                    <button
-                      onClick={() => deleteAccount(a.id, a.name)}
-                      style={{ ...smallBtn, background: '#fef2f2', color: '#dc2626' }}
-                    >
-                      Delete
-                    </button>
+                    {isAdmin() && (
+                      <button onClick={() => deleteAccount(a.id, a.name)} style={{ ...smallBtn, background: '#fef2f2', color: '#dc2626' }}>Delete</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -192,6 +237,70 @@ export default function Accounts() {
           </table>
         )}
       </div>
+
+      {/* Edit modal */}
+      {editingAccount && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: '#fff', borderRadius: 10, padding: 28, width: 500, maxWidth: '90vw', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>Edit Account</h2>
+            <form onSubmit={saveEdit}>
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>Account Name</label>
+                <input style={inputStyle} value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>URL</label>
+                <input style={inputStyle} value={editForm.url} onChange={e => setEditForm(f => ({ ...f, url: e.target.value }))} required />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>
+                  Password <span style={{ color: '#9ca3af', fontWeight: 400 }}>(leave blank to keep current)</span>
+                </label>
+                <input style={inputStyle} type="password" value={editForm.password} onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} placeholder="New password (optional)" />
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Version</label>
+                  <select style={{ ...inputStyle, cursor: 'pointer' }} value={editForm.version} onChange={e => setEditForm(f => ({ ...f, version: e.target.value }))}>
+                    {VERSIONS.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Status</label>
+                  <select
+                    style={{ ...inputStyle, cursor: 'pointer' }}
+                    value={editForm.enabled ? 'enabled' : 'disabled'}
+                    onChange={e => setEditForm(f => ({ ...f, enabled: e.target.value === 'enabled' }))}
+                  >
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Disabled</option>
+                  </select>
+                </div>
+              </div>
+
+              {editMessage && (
+                <div style={{
+                  padding: '9px 14px', borderRadius: 6, marginBottom: 12, fontSize: 13,
+                  background: editMessage.type === 'error' ? '#fef2f2' : '#f0fdf4',
+                  color: editMessage.type === 'error' ? '#dc2626' : '#16a34a',
+                  border: `1px solid ${editMessage.type === 'error' ? '#fecaca' : '#bbf7d0'}`,
+                }}>
+                  {editMessage.text}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+                <button type="button" onClick={closeEdit} style={{ ...smallBtn, padding: '8px 16px', fontSize: 14, background: '#f3f4f6', color: '#374151' }}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={editLoading} style={{ ...smallBtn, padding: '8px 18px', fontSize: 14, background: editLoading ? '#93c5fd' : '#2563eb', color: '#fff' }}>
+                  {editLoading ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

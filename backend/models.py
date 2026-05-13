@@ -11,6 +11,16 @@ from datetime import datetime
 Base = declarative_base()
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(256), nullable=False)
+    role = Column(String(20), nullable=False, default="user")  # 'user' or 'admin'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Account(Base):
     """Account model for storing Orcanos account details"""
     __tablename__ = "accounts"
@@ -20,6 +30,7 @@ class Account(Base):
     url = Column(String(512), nullable=False)
     encrypted_password = Column(String(512), nullable=False)
     enabled = Column(Boolean, default=True)
+    version = Column(String(50), default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships

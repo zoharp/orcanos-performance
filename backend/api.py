@@ -18,6 +18,7 @@ from backend.routes.auth import router as auth_router
 from backend.routes.accounts import router as accounts_router
 from backend.routes.runs import router as runs_router
 from backend.routes.results import router as results_router
+from backend.routes.config import router as config_router
 
 
 @asynccontextmanager
@@ -59,6 +60,7 @@ app.include_router(accounts_router, prefix="/api/accounts", tags=["Accounts"])
 app.include_router(scenarios_router, prefix="/api/scenarios", tags=["Scenarios"])
 app.include_router(runs_router, prefix="/api/runs", tags=["Runs"])
 app.include_router(results_router, prefix="/api/results", tags=["Results"])
+app.include_router(config_router, prefix="/api/config", tags=["Config"])
 
 
 @app.get("/health")
@@ -66,6 +68,15 @@ async def health_check():
     return {"status": "ok", "backend_version": "0.1.0"}
 
 
-@app.get("/")
-async def root():
-    return {"message": "Orcanos Performance Testing Tool API", "version": "0.1.0", "docs": "/docs"}
+@app.get("/healthz")
+async def health_check_alt():
+    return {"status": "ok"}
+
+
+# Serve React frontend in production (when dist/ exists)
+from pathlib import Path as _Path
+from fastapi.staticfiles import StaticFiles as _StaticFiles
+
+_dist = _Path(__file__).parent.parent / "frontend" / "dist"
+if _dist.exists():
+    app.mount("/", _StaticFiles(directory=_dist, html=True), name="frontend")

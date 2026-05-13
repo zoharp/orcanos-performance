@@ -2,19 +2,27 @@
 Scenario management routes — recording and listing
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from pathlib import Path
 import json
+from backend.services.auth import get_current_user, require_admin
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
-SCENARIOS_DIR = Path(__file__).parent.parent / "scenarios"
+import os
+SCENARIOS_DIR = Path(os.getenv("SCENARIOS_DIR", str(Path(__file__).parent.parent / "scenarios")))
 
 
 class StartRequest(BaseModel):
     name: str
     url: str = "https://app.orcanos.com/orcanos/web/"
+    version: str = "6.0"
+
+
+class EditScenarioRequest(BaseModel):
+    name: str
+    version: str = ""
 
 
 @router.post("/record/start")
@@ -23,7 +31,7 @@ def start_recording(req: StartRequest):
     if session.active:
         raise HTTPException(400, "Recording already in progress")
     try:
-        session.start(req.name, req.url)
+        session.start(req.name, req.url, req.version)
     except RuntimeError as e:
         raise HTTPException(400, str(e))
     return {"status": "recording", "name": req.name, "url": req.url}
@@ -55,6 +63,7 @@ def list_scenarios():
             data = json.loads(f.read_text())
             result.append({
                 "name": data["name"],
+                "version": data.get("version", ""),
                 "base_url": data.get("base_url", ""),
                 "step_count": len(data.get("steps", [])),
                 "created_at": data.get("created_at", ""),
@@ -72,7 +81,32 @@ def get_scenario(name: str):
     return json.loads(filepath.read_text())
 
 
-@router.delete("/{name}")
+@router.put("/{name}")
+def edit_scenario(name: str, req: EditScenarioRequest):
+    filepath = SCENARIOS_DIR / f"{name}.json"
+    if not filepath.exists():
+        raise HTTPException(404, f"Scenario '{name}' not found")
+
+    new_name = req.name.strip()
+    if not new_name:
+        raise HTTPException(400, "Name is required")
+
+    data = json.loads(filepath.read_text())
+    data["name"] = new_name
+    data["version"] = req.version
+
+    if new_name != name:
+        new_filepath = SCENARIOS_DIR / f"{new_name}.json"
+        if new_filepath.exists():
+            raise HTTPException(400, f"Scenario '{new_name}' already exists")
+        filepath.unlink()
+        filepath = new_filepath
+
+    filepath.write_text(json.dumps(data, indent=2))
+    return {"name": new_name, "version": req.version}
+
+
+@router.delete("/{name}", dependencies=[Depends(require_admin)])
 def delete_scenario(name: str):
     filepath = SCENARIOS_DIR / f"{name}.json"
     if not filepath.exists():

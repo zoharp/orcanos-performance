@@ -1,13 +1,12 @@
 # Orcanos Performance Testing Tool — Claude Code Instructions
 
-> System-level rules (deployment gate, skills, versioning, traceability) are in `system.md`.
-> This file contains only project-specific information.
+> For feature specs, UI mockups, and architecture decisions see `design/orcanos-performance-test.md`.
 
 ---
 
 ## Project
 
-A centralized performance and stability monitoring tool for the Orcanos system. Records user interaction scenarios once using Playwright and automatically runs them across all customer accounts, tracking response times and identifying bottlenecks. Admin-only web app that runs tests on schedule and provides dashboards with historical trends.
+A centralized performance and stability monitoring tool for the Orcanos system. Records user interaction scenarios once using Playwright and automatically runs them across all customer accounts, tracking response times and identifying bottlenecks. Admin-only web app.
 
 **Account Model:**
 - Each account has a unique password (stored encrypted with AES-256/Fernet)
@@ -23,18 +22,8 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 
 - **Backend:** FastAPI (Python 3.14)
 - **Frontend:** React + Vite
-- **Database:** SQLite (can migrate to PostgreSQL/Supabase later)
+- **Database:** SQLite (SQLAlchemy)
 - **Browser Automation:** Playwright (Chromium)
-- **AI/LLM:** None
-
----
-
-## Deployment
-
-- **Frontend:** Vercel (auto-deploys on push to main)
-- **Backend:** Vercel Serverless Functions or separate service (Railway/Render)
-- **Database:** SQLite file-based (can migrate to managed DB later)
-- **Deploy:** run `GitPush.bat` — auto-deploys via Vercel
 
 ---
 
@@ -51,12 +40,12 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 - [x] Project structure, environment setup, `.env`, venv
 - [x] FastAPI backend with CORS, `/health` endpoint, SQLite via SQLAlchemy
 - [x] Auth service (JWT), encryption service (AES-256/Fernet)
-- [x] Accounts API — CRUD with encrypted password storage
+- [x] Accounts API — CRUD with encrypted password storage, version field
 - [x] Scenario recorder service — runs Playwright in background thread, auto-captures clicks/fills/navigations
-- [x] Scenarios API — record/start, record/stop, record/status, list, get, delete
+- [x] Scenarios API — record/start, record/stop, record/status, list, get, delete, edit (name + version)
 - [x] React frontend with routing (react-router-dom v6)
-- [x] Accounts page — add account by URL + password, auto-extracts account name, list/enable/disable/delete
-- [x] Scenarios page — record new scenario via browser, live step feed, saved scenarios list
+- [x] Accounts page — add (URL + password + version), list, edit all fields, enable/disable, delete
+- [x] Scenarios page — record new scenario, live step feed, edit name/version, run button + progress
 - [x] `run.bat` — kills previous processes, waits for backend + frontend, opens browser
 - [x] Test runner (`backend/services/runner.py`) — replays scenario headless per account, measures per-step timing, saves StepResult rows
 - [x] Runs API — `POST /api/runs/` starts run in background thread, `GET /api/runs/{id}/progress` for live polling
@@ -75,17 +64,14 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 
 ```
 orcanos-performance/
-├── CLAUDE.md                  ← this file (project-specific)
-├── system.md                  ← global Orcanos rules
-├── orcanos-performance-test.md ← design document
+├── CLAUDE.md                  ← this file
+├── design/
+│   └── orcanos-performance-test.md  ← full design doc (features, architecture, mockups)
 ├── .env                       ← secrets (never commit)
 ├── .env.example               ← template (keys only)
-├── .gitignore
-├── accounts.json              ← legacy account list (replaced by DB)
 ├── GitPush.bat                ← git commit + push (Windows)
 ├── run.bat                    ← start backend + frontend, opens browser
-├── run-backend.bat            ← start backend only
-├── run_claude.bat             ← launch Claude Code
+├── run-backend.bat            ← backend only (FastAPI on port 8000)
 ├── requirements.txt           ← Python dependencies (use >= versions, Python 3.14)
 ├── backend/
 │   ├── api.py                 ← FastAPI app, lifespan, route registration
@@ -100,7 +86,7 @@ orcanos-performance/
 │   └── routes/
 │       ├── auth.py            ← POST /api/auth/login, /logout, /verify
 │       ├── accounts.py        ← CRUD /api/accounts/
-│       ├── scenarios.py       ← /api/scenarios/record/*, list, get, delete
+│       ├── scenarios.py       ← /api/scenarios/record/*, list, get, edit, delete
 │       ├── runs.py            ← POST /api/runs/, GET /api/runs/{id}/progress
 │       └── results.py         ← GET /api/results/runs, GET /api/results/run/{id}
 ├── scripts/
@@ -112,22 +98,21 @@ orcanos-performance/
 └── frontend/
     ├── package.json
     ├── vite.config.js         ← Vite proxy: /api → localhost:8000 (no rewrite)
-    ├── .env.local
     └── src/
         ├── App.jsx            ← BrowserRouter, Nav, routes
-        ├── main.jsx
-        ├── App.css / index.css
         └── pages/
             ├── Dashboard.jsx  ← runs list + account×step timing matrix
-            ├── Accounts.jsx   ← add/list/toggle/delete accounts
-            └── Scenarios.jsx  ← record new scenario, live step feed, run button + progress
+            ├── Accounts.jsx   ← add/edit/list/toggle/delete accounts
+            └── Scenarios.jsx  ← record, edit, run scenarios
 ```
 
 ---
 
 ## Key Implementation Notes
 
-**Vite proxy:** All frontend API calls use relative paths (`/api/...`). Vite proxies them to `http://localhost:8000` without rewriting. Never use `VITE_API_URL` for API calls — always use `const API = ''`.
+**Vite proxy:** All frontend API calls use relative paths (`/api/...`). Vite proxies them to `http://localhost:8000` without rewriting. Never use `VITE_API_URL` — always use `const API = ''`.
+
+**Scenarios storage:** Scenarios are JSON files in `backend/scenarios/`, not DB rows. The `Scenario` SQLAlchemy model exists but is unused. Editing a scenario name renames the file.
 
 **Recorder:** `backend/services/recorder.py` runs a `RecordingSession` singleton. Playwright runs in a background thread with its own asyncio loop. The API polls `/api/scenarios/record/status` every second during recording.
 
@@ -135,9 +120,9 @@ orcanos-performance/
 
 **Passwords:** Stored encrypted in SQLite. `{{PASSWORD}}` placeholder in scenario steps is replaced at test runtime with the account's decrypted password.
 
-**DB migrations:** `init_db()` in `database.py` calls `create_all` then manually checks for missing columns via `PRAGMA table_info` and runs `ALTER TABLE` as needed. Add new migrations there when adding columns.
+**DB migrations:** `init_db()` in `database.py` calls `create_all` then manually checks for missing columns via `PRAGMA table_info` and runs `ALTER TABLE`. Always add new column migrations there — SQLAlchemy `create_all` does not alter existing tables.
 
-**Python 3.14:** Use `>=` version constraints in `requirements.txt` — pinned old versions don't have wheels for Python 3.14.
+**Python 3.14:** Use `>=` version constraints in `requirements.txt` — pinned old versions don't have wheels for 3.14.
 
 ---
 
@@ -145,7 +130,7 @@ orcanos-performance/
 
 ```bash
 ADMIN_PASSWORD=your-secure-admin-password
-ENCRYPTION_KEY=your-32-char-hex-encryption-key   # generate: python -c "import secrets; print(secrets.token_hex(16))"
+ENCRYPTION_KEY=your-32-char-hex-encryption-key   # python -c "import secrets; print(secrets.token_hex(16))"
 ENVIRONMENT=development
 LOG_LEVEL=INFO
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
@@ -159,11 +144,11 @@ DATABASE_URL=sqlite:///./orcanos_performance.db
 ```bat
 run.bat           ← full stack (kills previous, starts backend + frontend, opens browser)
 run-backend.bat   ← backend only (FastAPI on port 8000)
-GitPush.bat       ← commit & push to GitHub
+GitPush.bat       ← commit & push to GitHub (triggers Vercel deploy)
 ```
 
 **First-time setup:**
-1. `setup.bat` — creates venv, installs dependencies, runs `playwright install chromium`
+1. `setup.bat` — creates venv, installs deps, runs `playwright install chromium`
 2. Copy `.env.example` → `.env` and fill in `ADMIN_PASSWORD` + `ENCRYPTION_KEY`
 3. `run.bat`
 
@@ -171,14 +156,12 @@ GitPush.bat       ← commit & push to GitHub
 
 ## Common Issues
 
-**Port 8000/5173 in use:** `run.bat` kills them automatically on startup.
-
-**Python venv missing:** `python -m venv .venv` then `.venv\Scripts\pip install -r requirements.txt`
+**Port in use:** `run.bat` kills ports 8000/5173 automatically on startup.
 
 **Playwright browser missing:** `.venv\Scripts\python -m playwright install chromium`
 
-**500 errors:** The global exception handler in `api.py` returns `{"detail": "...", "type": "..."}` with the real error. Check the backend console window for the full traceback.
+**500 errors:** Global exception handler in `api.py` returns the real error. Check backend console for traceback.
 
-**Missing DB column:** If you add a column to a model, add an `ALTER TABLE` migration in `init_db()` in `database.py` — SQLAlchemy's `create_all` does not add columns to existing tables.
+**Missing DB column:** Add `ALTER TABLE` migration in `init_db()` in `database.py`.
 
 **CORS errors:** Frontend must use relative paths (`/api/...`), not `http://localhost:8000/api/...`.

@@ -1,10 +1,14 @@
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
+import { useState } from 'react'
+import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom'
 import Scenarios from './pages/Scenarios'
 import Accounts from './pages/Accounts'
 import Dashboard from './pages/Dashboard'
+import Settings from './pages/Settings'
+import Login from './pages/Login'
+import { isAuthenticated, getUsername, getRole, clearAuth } from './auth'
 import './App.css'
 
-function Nav() {
+function Nav({ onLogout }) {
   const loc = useLocation()
   const link = (to, label) => (
     <Link to={to} style={{
@@ -19,19 +23,54 @@ function Nav() {
       {link('/', 'Dashboard')}
       {link('/scenarios', 'Scenarios')}
       {link('/accounts', 'Accounts')}
+      {link('/settings', 'Settings')}
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>
+          {getUsername()}
+          <span style={{
+            marginLeft: 6, fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+            color: getRole() === 'admin' ? '#f59e0b' : '#64748b',
+          }}>
+            {getRole()}
+          </span>
+        </span>
+        <button onClick={onLogout} style={{
+          background: 'none', border: '1px solid #334155', color: '#cbd5e1',
+          borderRadius: 5, padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+        }}>
+          Sign out
+        </button>
+      </div>
     </nav>
   )
 }
 
+function ProtectedRoute({ children }) {
+  if (!isAuthenticated()) return <Navigate to="/login" replace />
+  return children
+}
+
 export default function App() {
+  const [loggedIn, setLoggedIn] = useState(isAuthenticated())
+
+  function handleLogout() {
+    clearAuth()
+    setLoggedIn(false)
+  }
+
   return (
     <BrowserRouter>
       <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
-        <Nav />
+        {loggedIn && <Nav onLogout={handleLogout} />}
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/scenarios" element={<Scenarios />} />
-          <Route path="/accounts" element={<Accounts />} />
+          <Route path="/login" element={
+            loggedIn ? <Navigate to="/" replace /> : <Login onLogin={() => setLoggedIn(true)} />
+          } />
+          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/scenarios" element={<ProtectedRoute><Scenarios /></ProtectedRoute>} />
+          <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
     </BrowserRouter>

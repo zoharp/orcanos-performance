@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from backend.models import StepResult, TestRun, Account
 from backend.services.database import get_db
+from backend.services.auth import get_current_user
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("/run/{run_id}")

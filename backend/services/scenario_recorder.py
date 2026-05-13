@@ -70,7 +70,8 @@ class ScenarioRecorder:
     def save_to_file(self, filepath: Optional[str] = None) -> str:
         """Save scenario to JSON file"""
         if not filepath:
-            scenarios_dir = Path(__file__).parent.parent / "scenarios"
+            import os
+            scenarios_dir = Path(os.getenv("SCENARIOS_DIR", str(Path(__file__).parent.parent / "scenarios")))
             scenarios_dir.mkdir(exist_ok=True)
             filepath = scenarios_dir / f"{self.scenario_name}.json"
 

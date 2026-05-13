@@ -70,10 +70,11 @@ class RecordingSession:
         self.steps: List[Dict] = []
         self.name: Optional[str] = None
         self.url: Optional[str] = None
+        self.version: str = ""
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
-    def start(self, name: str, url: str):
+    def start(self, name: str, url: str, version: str = ""):
         with self._lock:
             if self.active:
                 raise RuntimeError("Recording already in progress")
@@ -81,6 +82,7 @@ class RecordingSession:
             self.steps = []
             self.name = name
             self.url = url
+            self.version = version
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -174,11 +176,13 @@ class RecordingSession:
             print(f"[Recorder] Error: {e}")
 
     def _save(self, steps: List[Dict]) -> str:
-        scenarios_dir = Path(__file__).parent.parent / "scenarios"
+        import os
+        scenarios_dir = Path(os.getenv("SCENARIOS_DIR", str(Path(__file__).parent.parent / "scenarios")))
         scenarios_dir.mkdir(exist_ok=True)
         filepath = scenarios_dir / f"{self.name}.json"
         data = {
             "name": self.name,
+            "version": self.version,
             "base_url": self.url,
             "user": "orcanos.tech",
             "created_at": datetime.utcnow().isoformat(),

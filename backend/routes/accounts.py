@@ -9,8 +9,9 @@ from pydantic import BaseModel
 from backend.models import Account
 from backend.services.database import get_db
 from backend.services.encryption import get_encryption_service
+from backend.services.auth import get_current_user, require_admin
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 class AccountRequest(BaseModel):
@@ -18,6 +19,7 @@ class AccountRequest(BaseModel):
     url: str
     password: str
     enabled: bool = True
+    version: str = ""
 
 
 class AccountResponse(BaseModel):
@@ -25,6 +27,7 @@ class AccountResponse(BaseModel):
     name: str
     url: str
     enabled: bool
+    version: str = ""
     model_config = {"from_attributes": True}
 
 
@@ -65,6 +68,7 @@ async def create_account(request: AccountRequest, db: Session = Depends(get_db))
         url=request.url,
         encrypted_password=encrypted_password,
         enabled=request.enabled,
+        version=request.version,
     )
     db.add(account)
     db.commit()
@@ -81,6 +85,7 @@ async def update_account(account_id: int, request: AccountRequest, db: Session =
     account.name = request.name
     account.url = request.url
     account.enabled = request.enabled
+    account.version = request.version
 
     if request.password:
         try:
@@ -94,7 +99,7 @@ async def update_account(account_id: int, request: AccountRequest, db: Session =
     return account
 
 
-@router.delete("/{account_id}", status_code=204)
+@router.delete("/{account_id}", status_code=204, dependencies=[Depends(require_admin)])
 async def delete_account(account_id: int, db: Session = Depends(get_db)):
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:

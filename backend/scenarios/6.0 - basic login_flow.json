@@ -1,5 +1,5 @@
 {
-  "name": "login_flow",
+  "name": "6.0 - basic login_flow",
   "base_url": "https://app.orcanos.com/orcanos/web/",
   "user": "orcanos.tech",
   "created_at": "2026-05-13T17:58:47.340447",
@@ -53,5 +53,6 @@
       "value": null,
       "expected_result": null
     }
-  ]
+  ],
+  "version": "6.0"
 }
