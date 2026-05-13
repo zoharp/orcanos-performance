@@ -117,17 +117,25 @@ class RunnerSession:
                         start_url = base_url
                         if src_account and tgt_account != src_account:
                             start_url = base_url.replace(f"/{src_account}/", f"/{tgt_account}/")
+                        print(f"[RUNNER] Navigating to {start_url}")
                         await page.goto(start_url, wait_until="load", timeout=step_timeout_ms)
+                        print(f"[RUNNER] Page loaded")
 
                     for step in steps:
-                        if step["action"] in ("fill", "click"):
-                            try:
-                                await page.wait_for_selector(step["target"], timeout=5000)
-                            except PlaywrightTimeout:
-                                pass
                         action = step["action"]
                         target = step["target"]
                         value = step.get("value")
+
+                        print(f"[RUNNER] Step: {step['name']} (action={action}, target={target})")
+
+                        if action in ("fill", "click"):
+                            try:
+                                print(f"[RUNNER]   Waiting for selector: {target}")
+                                await page.wait_for_selector(target, timeout=5000)
+                                print(f"[RUNNER]   Selector found")
+                            except PlaywrightTimeout:
+                                print(f"[RUNNER]   Selector NOT found (timeout)")
+                                pass
 
                         if src_account and tgt_account != src_account:
                             target = target.replace(f"/{src_account}/", f"/{tgt_account}/")
@@ -145,6 +153,7 @@ class RunnerSession:
                         step_timed_out = False
 
                         try:
+                            print(f"[RUNNER]   Executing {action}...")
                             if action == "navigate":
                                 await page.goto(target, wait_until="load", timeout=step_timeout_ms)
                             elif action == "fill":
@@ -155,11 +164,14 @@ class RunnerSession:
                                     await page.wait_for_load_state("load", timeout=step_timeout_ms)
                                 except PlaywrightTimeout:
                                     pass
+                            print(f"[RUNNER]   {action} completed")
                         except PlaywrightTimeout:
                             step_timed_out = True
                             error_msg = f"timeout({step_timeout_s}s)"
+                            print(f"[RUNNER]   TIMEOUT: {error_msg}")
                         except Exception as e:
                             error_msg = str(e)[:500]
+                            print(f"[RUNNER]   ERROR: {error_msg}")
 
                         duration = time.monotonic() - t0
 
