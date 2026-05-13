@@ -29,6 +29,12 @@ if errorlevel 1 (
     exit /b 1
 )
 
+
+
+echo.
+echo === Deploy Flytl ===
+flyctl deploy
+
 echo.
 echo === Done! Deployed successfully. ===
 pause
