@@ -113,6 +113,12 @@ class RunnerSession:
                     page = await browser.new_page()
                     timed_out = False
 
+                    if base_url:
+                        start_url = base_url
+                        if src_account and tgt_account != src_account:
+                            start_url = base_url.replace(f"/{src_account}/", f"/{tgt_account}/")
+                        await page.goto(start_url, wait_until="load", timeout=step_timeout_ms)
+
                     for step in steps:
                         action = step["action"]
                         target = step["target"]
