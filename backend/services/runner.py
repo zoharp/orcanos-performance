@@ -120,6 +120,11 @@ class RunnerSession:
                         await page.goto(start_url, wait_until="load", timeout=step_timeout_ms)
 
                     for step in steps:
+                        if step["action"] in ("fill", "click"):
+                            try:
+                                await page.wait_for_selector(step["target"], timeout=5000)
+                            except PlaywrightTimeout:
+                                pass
                         action = step["action"]
                         target = step["target"]
                         value = step.get("value")
