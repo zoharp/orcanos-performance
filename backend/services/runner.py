@@ -135,13 +135,13 @@ class RunnerSession:
 
                         try:
                             if action == "navigate":
-                                await page.goto(target, wait_until="networkidle", timeout=step_timeout_ms)
+                                await page.goto(target, wait_until="load", timeout=step_timeout_ms)
                             elif action == "fill":
                                 await page.fill(target, value or "", timeout=step_timeout_ms)
                             elif action == "click":
                                 await page.click(target, timeout=step_timeout_ms)
                                 try:
-                                    await page.wait_for_load_state("networkidle", timeout=step_timeout_ms)
+                                    await page.wait_for_load_state("load", timeout=step_timeout_ms)
                                 except PlaywrightTimeout:
                                     pass
                         except PlaywrightTimeout:
