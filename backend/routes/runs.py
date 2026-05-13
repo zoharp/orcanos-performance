@@ -88,10 +88,20 @@ def stop_run(run_id: int):
 
 
 @router.get("/{run_id}/progress")
-def get_run_progress(run_id: int):
+def get_run_progress(run_id: int, db: Session = Depends(get_db)):
     from backend.services.runner import runner
     progress = runner.get_progress(run_id)
     if not progress:
+        run = db.query(TestRun).filter(TestRun.id == run_id).first()
+        if run:
+            return {
+                "status": run.status,
+                "run_id": run_id,
+                "scenario_name": run.scenario_name,
+                "current_account": None,
+                "completed_accounts": 0,
+                "total_accounts": 0
+            }
         return {"status": "unknown", "run_id": run_id}
     return progress
 
