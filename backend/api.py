@@ -75,15 +75,13 @@ async def health_check_alt():
 
 # Serve React frontend in production (when dist/ exists)
 from pathlib import Path as _Path
-from fastapi.staticfiles import StaticFiles as _StaticFiles
 from fastapi.responses import FileResponse as _FileResponse
 
 _dist = _Path(__file__).parent.parent / "frontend" / "dist"
 if _dist.exists():
-    # Catch-all: serve index.html for any non-API path so React Router handles navigation
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        index = _dist / "index.html"
-        return _FileResponse(index)
-
-    app.mount("/assets", _StaticFiles(directory=_dist / "assets"), name="assets")
+        file = _dist / full_path
+        if file.is_file():
+            return _FileResponse(file)
+        return _FileResponse(_dist / "index.html")
