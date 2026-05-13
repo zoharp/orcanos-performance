@@ -12,7 +12,9 @@
       "Bash(npm install *)",
       "Bash(Test-Path *)",
       "PowerShell(python --version)",
-      "PowerShell(Get-NetTCPConnection *)"
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(git fetch *)",
+      "Bash(git rm *)"
     ]
   }
 }
