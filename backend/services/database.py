@@ -2,7 +2,7 @@
 Database service for managing SQLite connections and initialization
 """
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 import os
 from backend.models import Base
@@ -20,8 +20,14 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db():
-    """Initialize database tables"""
+    """Initialize database tables and apply lightweight migrations"""
     Base.metadata.create_all(bind=engine)
+    # Add scenario_name column if it doesn't exist yet
+    with engine.connect() as conn:
+        cols = [row[1] for row in conn.execute(text("PRAGMA table_info(test_runs)"))]
+        if "scenario_name" not in cols:
+            conn.execute(text("ALTER TABLE test_runs ADD COLUMN scenario_name VARCHAR(255)"))
+            conn.commit()
 
 
 def get_db():

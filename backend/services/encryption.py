@@ -18,10 +18,9 @@ class EncryptionService:
         if not encryption_key_hex:
             raise ValueError("ENCRYPTION_KEY environment variable not set")
 
-        # Convert hex key to 32-byte key for Fernet
-        encryption_key = bytes.fromhex(encryption_key_hex)
-        # Encode to base64 (Fernet requirement)
-        self.cipher_key = base64.urlsafe_b64encode(encryption_key)
+        # SHA-256 the key to always get exactly 32 bytes (Fernet requirement)
+        key_bytes = hashlib.sha256(encryption_key_hex.encode()).digest()
+        self.cipher_key = base64.urlsafe_b64encode(key_bytes)
         self.cipher = Fernet(self.cipher_key)
 
     def encrypt(self, plaintext: str) -> str:

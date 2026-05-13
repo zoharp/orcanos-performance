@@ -1,4 +1,4 @@
-# Orcanos Performance Testing Tool — Claude Code Instructions
+# Orcanos Performance Testing Tool — Codex Instructions
 
 > System-level rules (deployment gate, skills, versioning, traceability) are in `system.md`.
 > This file contains only project-specific information.
@@ -40,8 +40,8 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 
 ## Current versions
 
-- **Backend:** `0.2.0`
-- **Frontend:** `0.2.0`
+- **Backend:** `0.1.0` (MVP in progress)
+- **Frontend:** `0.1.0` (MVP in progress)
 
 ---
 
@@ -58,16 +58,13 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 - [x] Accounts page — add account by URL + password, auto-extracts account name, list/enable/disable/delete
 - [x] Scenarios page — record new scenario via browser, live step feed, saved scenarios list
 - [x] `run.bat` — kills previous processes, waits for backend + frontend, opens browser
-- [x] Test runner (`backend/services/runner.py`) — replays scenario headless per account, measures per-step timing, saves StepResult rows
-- [x] Runs API — `POST /api/runs/` starts run in background thread, `GET /api/runs/{id}/progress` for live polling
-- [x] Results API — `GET /api/results/runs` list, `GET /api/results/run/{id}` grouped by account
-- [x] Dashboard page — runs list + color-coded matrix (account × step), green/yellow/red by timing thresholds
-- [x] Run button on Scenarios page — triggers run, shows live progress bar per account
-- [x] Clear error messages — global exception handler returns actual error text; routes raise specific HTTPExceptions
 
-### Next
-- [ ] Historical chart (Recharts) — trend over time per account/step
-- [ ] Scheduled runs (cron) — auto-run scenarios on a schedule
+### In Progress / Next
+- [ ] Test runner — replay scenario on each account, measure step timings
+- [ ] Run button on dashboard — trigger test run manually
+- [ ] Results dashboard — per-account, per-step timings with green/yellow/red status
+- [ ] Historical chart (Recharts)
+- [ ] Scheduled runs (cron)
 
 ---
 
@@ -75,7 +72,7 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 
 ```
 orcanos-performance/
-├── CLAUDE.md                  ← this file (project-specific)
+├── AGENTS.md                  ← this file (project-specific)
 ├── system.md                  ← global Orcanos rules
 ├── orcanos-performance-test.md ← design document
 ├── .env                       ← secrets (never commit)
@@ -85,7 +82,7 @@ orcanos-performance/
 ├── GitPush.bat                ← git commit + push (Windows)
 ├── run.bat                    ← start backend + frontend, opens browser
 ├── run-backend.bat            ← start backend only
-├── run_claude.bat             ← launch Claude Code
+├── run_claude.bat             ← launch Codex
 ├── requirements.txt           ← Python dependencies (use >= versions, Python 3.14)
 ├── backend/
 │   ├── api.py                 ← FastAPI app, lifespan, route registration
@@ -93,16 +90,15 @@ orcanos-performance/
 │   ├── scenarios/             ← saved scenario JSON files
 │   ├── services/
 │   │   ├── auth.py            ← JWT auth service
-│   │   ├── database.py        ← SQLite engine, session, init_db (with auto-migration)
+│   │   ├── database.py        ← SQLite engine, session, init_db
 │   │   ├── encryption.py      ← Fernet AES-256 encrypt/decrypt
-│   │   ├── recorder.py        ← Playwright recording session (background thread)
-│   │   └── runner.py          ← Playwright headless replay, per-step timing, StepResult persistence
+│   │   └── recorder.py        ← Playwright recording session (background thread)
 │   └── routes/
 │       ├── auth.py            ← POST /api/auth/login, /logout, /verify
 │       ├── accounts.py        ← CRUD /api/accounts/
 │       ├── scenarios.py       ← /api/scenarios/record/*, list, get, delete
-│       ├── runs.py            ← POST /api/runs/, GET /api/runs/{id}/progress
-│       └── results.py         ← GET /api/results/runs, GET /api/results/run/{id}
+│       ├── runs.py            ← (stub) test run endpoints
+│       └── results.py         ← (stub) results endpoints
 ├── scripts/
 │   └── record_scenario.py     ← CLI recorder (fallback; UI recorder preferred)
 ├── tests/
@@ -118,9 +114,8 @@ orcanos-performance/
         ├── main.jsx
         ├── App.css / index.css
         └── pages/
-            ├── Dashboard.jsx  ← runs list + account×step timing matrix
             ├── Accounts.jsx   ← add/list/toggle/delete accounts
-            └── Scenarios.jsx  ← record new scenario, live step feed, run button + progress
+            └── Scenarios.jsx  ← record new scenario, live step feed, saved list
 ```
 
 ---
@@ -131,11 +126,7 @@ orcanos-performance/
 
 **Recorder:** `backend/services/recorder.py` runs a `RecordingSession` singleton. Playwright runs in a background thread with its own asyncio loop. The API polls `/api/scenarios/record/status` every second during recording.
 
-**Runner:** `backend/services/runner.py` runs a `RunnerSession` singleton. Replays scenario steps headless per account. Timing thresholds: < 3s = pass, 3–8s = warning, > 8s = critical. Replaces account name in navigation URLs automatically (e.g. `/orcanos/` → `/acme/`).
-
 **Passwords:** Stored encrypted in SQLite. `{{PASSWORD}}` placeholder in scenario steps is replaced at test runtime with the account's decrypted password.
-
-**DB migrations:** `init_db()` in `database.py` calls `create_all` then manually checks for missing columns via `PRAGMA table_info` and runs `ALTER TABLE` as needed. Add new migrations there when adding columns.
 
 **Python 3.14:** Use `>=` version constraints in `requirements.txt` — pinned old versions don't have wheels for Python 3.14.
 
@@ -177,8 +168,6 @@ GitPush.bat       ← commit & push to GitHub
 
 **Playwright browser missing:** `.venv\Scripts\python -m playwright install chromium`
 
-**500 errors:** The global exception handler in `api.py` returns `{"detail": "...", "type": "..."}` with the real error. Check the backend console window for the full traceback.
-
-**Missing DB column:** If you add a column to a model, add an `ALTER TABLE` migration in `init_db()` in `database.py` — SQLAlchemy's `create_all` does not add columns to existing tables.
+**500 on /api/accounts/:** Usually means `init_db()` didn't run or models are misconfigured. Check backend console for traceback.
 
 **CORS errors:** Frontend must use relative paths (`/api/...`), not `http://localhost:8000/api/...`.

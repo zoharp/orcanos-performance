@@ -1,0 +1,1 @@
+.venv\Scripts\python.exe -c "from backend.services.database import SessionLocal; from backend.models import Account;db=SessionLocal(); [print(a.id, a.name, a.url, a.enabled) for a in db.query(Account).all()]; db.close()"

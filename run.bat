@@ -23,7 +23,7 @@ powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort %FRONTEND_PORT% 
 timeout /t 2 /nobreak >nul
 
 REM ── Clear Python cache ────────────────────────────────────────
-if exist backend\__pycache__ rmdir /s /q backend\__pycache__ 2>nul
+for /d /r backend %%d in (__pycache__) do if exist "%%d" rmdir /s /q "%%d" 2>nul
 
 REM ── Start Backend ─────────────────────────────────────────────
 echo [1/2] Starting backend on port %BACKEND_PORT%...

@@ -37,22 +37,17 @@ class Scenario(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
-    test_runs = relationship("TestRun", back_populates="scenario")
-
-
 class TestRun(Base):
     """Test run model"""
     __tablename__ = "test_runs"
 
     id = Column(Integer, primary_key=True, index=True)
-    scenario_id = Column(Integer, ForeignKey("scenarios.id"), nullable=False)
+    scenario_id = Column(Integer, default=0)
+    scenario_name = Column(String(255))
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)
     status = Column(String(50))  # 'pass', 'warning', 'critical'
 
-    # Relationships
-    scenario = relationship("Scenario", back_populates="test_runs")
     step_results = relationship("StepResult", back_populates="test_run")
 
 

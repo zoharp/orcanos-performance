@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
 import Scenarios from './pages/Scenarios'
 import Accounts from './pages/Accounts'
+import Dashboard from './pages/Dashboard'
 import './App.css'
 
 function Nav() {
@@ -19,15 +20,6 @@ function Nav() {
       {link('/scenarios', 'Scenarios')}
       {link('/accounts', 'Accounts')}
     </nav>
-  )
-}
-
-function Dashboard() {
-  return (
-    <div style={{ padding: 24 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Dashboard</h1>
-      <p style={{ color: '#6b7280' }}>Test runs and results will appear here once you record a scenario and run tests.</p>
-    </div>
   )
 }
 
