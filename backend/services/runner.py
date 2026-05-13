@@ -129,15 +129,6 @@ class RunnerSession:
 
                         print(f"[RUNNER] Step: {step['name']} (action={action}, target={target})")
 
-                        if action in ("fill", "click"):
-                            try:
-                                print(f"[RUNNER]   Waiting for selector: {target}")
-                                await page.wait_for_selector(target, timeout=30000)
-                                print(f"[RUNNER]   Selector found")
-                            except PlaywrightTimeout:
-                                print(f"[RUNNER]   Selector NOT found after 30s")
-                                pass
-
                         if src_account and tgt_account != src_account:
                             target = target.replace(f"/{src_account}/", f"/{tgt_account}/")
 
