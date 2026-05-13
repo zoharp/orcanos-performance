@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { fetchWithAuth } from '../auth'
 
 const API = ''
 
@@ -11,7 +12,7 @@ export default function Settings() {
 
   async function load() {
     try {
-      const res = await fetch(`${API}/api/config/`)
+      const res = await fetchWithAuth(`${API}/api/config/`)
       setForm(await res.json())
     } catch {
       setMessage({ type: 'error', text: 'Failed to load config.' })
@@ -23,7 +24,7 @@ export default function Settings() {
     setSaving(true)
     setMessage(null)
     try {
-      const res = await fetch(`${API}/api/config/`, {
+      const res = await fetchWithAuth(`${API}/api/config/`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

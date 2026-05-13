@@ -109,9 +109,15 @@ export default function Scenarios() {
     }, 1000)
   }
 
+  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+
   async function startRecording(e) {
     e.preventDefault()
     if (!recordName.trim()) return
+    if (!isLocal) {
+      setMessage({ type: 'error', text: 'Recording can only be done locally. Record on your machine, then upload the scenario file to fly.io.' })
+      return
+    }
     try {
       await fetchWithAuth(`${API}/api/scenarios/record/start`, {
         method: 'POST',
