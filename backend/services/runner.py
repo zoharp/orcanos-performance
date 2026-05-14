@@ -168,6 +168,16 @@ class RunnerSession:
                         await page.goto(account_url, wait_until="load", timeout=step_timeout_ms)
                         print(f"[RUNNER] Page loaded")
 
+                    project_id_match = None
+
+                    # Try to extract project ID from page source: current_project: '37'
+                    try:
+                        project_id_match = await page.evaluate("window.current_project || null")
+                        if project_id_match:
+                            print(f"[RUNNER] Found project ID in page: {project_id_match}")
+                    except Exception:
+                        pass
+
                     for step in steps:
                         action = step["action"]
                         target = step["target"]
@@ -181,6 +191,11 @@ class RunnerSession:
                             target_domain = f"{parsed_target.scheme}://{parsed_target.netloc}"
                             if target_domain != account_domain:
                                 target = target.replace(target_domain, account_domain)
+
+                        # Replace project IDs in URLs: find any /web/{oldProjectId}/ and replace with current project ID
+                        if target.startswith("http") and project_id_match:
+                            import re
+                            target = re.sub(r'/web/\d+/', f'/web/{project_id_match}/', target)
 
                         print(f"[RUNNER] Step: {step['name']} (action={action}, target={target})")
 
@@ -222,9 +237,27 @@ class RunnerSession:
                             print(f"[RUNNER]   Executing {action}...")
                             if action == "navigate":
                                 await page.goto(target, wait_until="load", timeout=step_timeout_ms)
+                                # Try to extract project ID from page source after navigate
+                                try:
+                                    pid = await page.evaluate("window.current_project || null")
+                                    if pid:
+                                        nonlocal project_id_match
+                                        project_id_match = pid
+                                        print(f"[RUNNER] Updated project ID from page: {project_id_match}")
+                                except Exception:
+                                    pass
                             elif action == "fill":
+                                await page.wait_for_selector(target, state="visible", timeout=step_timeout_ms)
                                 await page.fill(target, value or "", timeout=step_timeout_ms)
                             elif action == "click":
+                                # Add delay for menu popups to appear/animate
+                                await page.wait_for_timeout(800)
+                                # Wait for element to be visible before clicking
+                                try:
+                                    await page.wait_for_selector(target, state="visible", timeout=5000)
+                                except PlaywrightTimeout:
+                                    # Try without visibility requirement
+                                    await page.wait_for_selector(target, timeout=5000)
                                 await page.click(target, timeout=step_timeout_ms)
                                 try:
                                     await page.wait_for_load_state("load", timeout=step_timeout_ms)
@@ -237,7 +270,7 @@ class RunnerSession:
                             print(f"[RUNNER]   TIMEOUT: {error_msg}")
                         except Exception as e:
                             error_msg = str(e)[:500]
-                            print(f"[RUNNER]   ERROR: {error_msg}")
+                            print(f"[RUNNER]   ERROR: {error_msg} | target={target}")
 
                         page.remove_listener("request", on_request)
                         page.remove_listener("response", on_response)
