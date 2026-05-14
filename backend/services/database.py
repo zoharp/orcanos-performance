@@ -32,6 +32,10 @@ def init_db():
         if "version" not in acct_cols:
             conn.execute(text("ALTER TABLE accounts ADD COLUMN version VARCHAR(50) DEFAULT ''"))
             conn.commit()
+        sr_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(step_results)"))]
+        if "requests" not in sr_cols:
+            conn.execute(text("ALTER TABLE step_results ADD COLUMN requests JSON"))
+            conn.commit()
 
     # Seed default users (idempotent)
     import os

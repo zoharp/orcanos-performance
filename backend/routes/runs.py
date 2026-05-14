@@ -64,7 +64,7 @@ def start_run(request: StartRunRequest, db: Session = Depends(get_db)):
     db.refresh(run)
 
     accounts_data = [
-        {"id": a.id, "name": a.name, "encrypted_password": a.encrypted_password}
+        {"id": a.id, "name": a.name, "encrypted_password": a.encrypted_password, "url": a.url}
         for a in accounts
     ]
 

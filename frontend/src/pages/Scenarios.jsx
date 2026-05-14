@@ -34,6 +34,7 @@ export default function Scenarios() {
   const [runProgress, setRunProgress] = useState(null)
   const [message, setMessage] = useState(null)
   const runPollRef = useRef(null)
+  const reqFeedRef = useRef(null)
 
   const [accounts, setAccounts] = useState([])
   const [selectedAccounts, setSelectedAccounts] = useState({})
@@ -185,6 +186,9 @@ export default function Scenarios() {
         const res = await fetchWithAuth(`${API}/api/runs/${id}/progress`)
         const data = await res.json()
         setRunProgress(data)
+        if (reqFeedRef.current) {
+          reqFeedRef.current.scrollTop = reqFeedRef.current.scrollHeight
+        }
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'stopped') {
           clearInterval(runPollRef.current)
           setRunningScenario(null)
@@ -347,6 +351,36 @@ export default function Scenarios() {
               transition: 'width 0.5s',
             }} />
           </div>
+
+          {/* Live API call feed */}
+          {(runProgress.recent_requests?.length > 0) && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4, letterSpacing: 0.3 }}>
+                API CALLS
+              </div>
+              <div
+                ref={reqFeedRef}
+                style={{
+                  background: '#0f172a', borderRadius: 6, padding: '8px 10px',
+                  maxHeight: 220, overflowY: 'auto', fontFamily: 'monospace', fontSize: 11,
+                }}
+              >
+                {runProgress.recent_requests.map((r, i) => {
+                  const color = r.duration_ms < 1000 ? '#4ade80' : r.duration_ms < 3000 ? '#fbbf24' : '#f87171'
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 8, padding: '1px 0', color: '#cbd5e1', lineHeight: 1.6 }}>
+                      <span style={{ color: '#93c5fd', minWidth: 36 }}>{r.method}</span>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#e2e8f0' }}>
+                        {r.url}
+                      </span>
+                      <span style={{ color: r.status < 400 ? '#86efac' : '#f87171', minWidth: 30 }}>{r.status}</span>
+                      <span style={{ color, minWidth: 52, textAlign: 'right' }}>{r.duration_ms}ms</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

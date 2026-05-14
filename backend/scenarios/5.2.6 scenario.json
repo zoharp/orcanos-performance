@@ -1,0 +1,114 @@
+{
+  "name": "5.2.6 scenario",
+  "version": "5.2.6",
+  "base_url": "https://us.orcanos.com/seeallai/web/",
+  "user": "orcanos.tech",
+  "created_at": "2026-05-14T00:43:03.303547",
+  "steps": [
+    {
+      "name": "Navigate to Login",
+      "action": "navigate",
+      "target": "https://us.orcanos.com/seeallai/web/Account/Login",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Fill: Please type your Email / Username",
+      "action": "fill",
+      "target": "#kabab-login",
+      "value": "orcanos.tech",
+      "expected_result": null
+    },
+    {
+      "name": "Click: div.kabab-login-form__input-content",
+      "action": "click",
+      "target": "div.kabab-login-form__input-content",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Fill: Please type your Password",
+      "action": "fill",
+      "target": "#kabab-password",
+      "value": "{{PASSWORD}}",
+      "expected_result": null
+    },
+    {
+      "name": "Click: Login",
+      "action": "click",
+      "target": "#kabab-btn-loading",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Navigate to Dashboard",
+      "action": "navigate",
+      "target": "https://us.orcanos.com/seeallai/web/Dashboard",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Click: a.grid-view-menu",
+      "action": "click",
+      "target": "a.grid-view-menu",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Click: Product Tree",
+      "action": "click",
+      "target": "a:has-text(\"Product Tree\")",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Navigate to ProductTree",
+      "action": "navigate",
+      "target": "https://us.orcanos.com/seeallai/web/10/ProductTree",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Click: a.grid-view-menu",
+      "action": "click",
+      "target": "a.grid-view-menu",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Click: Work Items",
+      "action": "click",
+      "target": "a:has-text(\"Work Items\")",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Navigate to Listing",
+      "action": "navigate",
+      "target": "https://us.orcanos.com/seeallai/web/10/QPackItems/Listing",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Click: a.grid-view-menu",
+      "action": "click",
+      "target": "a.grid-view-menu",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Click: Document Control",
+      "action": "click",
+      "target": "a:has-text(\"Document Control\")",
+      "value": null,
+      "expected_result": null
+    },
+    {
+      "name": "Navigate to DocumentControl",
+      "action": "navigate",
+      "target": "https://us.orcanos.com/seeallai/web/5/ProductTree/DocumentControl",
+      "value": null,
+      "expected_result": null
+    }
+  ]
+}

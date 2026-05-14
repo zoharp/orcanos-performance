@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { fetchWithAuth, isAdmin } from '../auth'
 
 const API = ''
@@ -47,15 +47,32 @@ export default function Dashboard() {
   const [selectedRun, setSelectedRun] = useState(null)
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
+  const pollRef = useRef(null)
 
-  useEffect(() => { loadRuns() }, [])
+  useEffect(() => {
+    loadRuns()
+  }, [])
+
+  useEffect(() => {
+    const hasRunning = runs.some(r => r.status === 'running')
+
+    if (!hasRunning) {
+      clearInterval(pollRef.current)
+      return
+    }
+
+    clearInterval(pollRef.current)
+    pollRef.current = setInterval(loadRuns, 5000)
+
+    return () => clearInterval(pollRef.current)
+  }, [runs])
 
   async function loadRuns() {
     try {
       const res = await fetchWithAuth(`${API}/api/results/runs`)
       const data = await res.json()
       setRuns(data)
-      if (data.length > 0) selectRun(data[0])
+      if (data.length > 0 && !selectedRun) selectRun(data[0])
     } catch {}
   }
 

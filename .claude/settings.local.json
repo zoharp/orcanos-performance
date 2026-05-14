@@ -21,7 +21,9 @@
       "Bash(awk *)",
       "Bash(/c/AI Projects/orcanos-performance/.venv/Scripts/python *)",
       "PowerShell(*)",
-      "Bash(Select-Object -Last 60)"
+      "Bash(Select-Object -Last 60)",
+      "Bash(Remove-Item -Force orcanos_performance.db -ErrorAction SilentlyContinue)",
+      "Bash(Write-Host \"DB deleted\")"
     ]
   }
 }

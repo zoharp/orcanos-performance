@@ -91,15 +91,22 @@ class RunnerSession:
         scenario_path = SCENARIOS_DIR / f"{scenario_name}.json"
         scenario = json.loads(scenario_path.read_text())
         steps = scenario["steps"]
-        base_url = scenario.get("base_url", "")
-
-        try:
-            src_account = urlparse(base_url).path.strip("/").split("/")[0]
-        except Exception:
-            src_account = ""
 
         enc = get_encryption_service()
         db = SessionLocal()
+
+        # Extract source account name from first step target URL
+        src_account = None
+        for step in steps:
+            target = step.get("target", "")
+            if target.startswith("http"):
+                try:
+                    path = urlparse(target).path.strip("/").split("/")[0]
+                    if path:
+                        src_account = path
+                        break
+                except Exception:
+                    pass
 
         try:
             async with async_playwright() as p:
@@ -108,18 +115,20 @@ class RunnerSession:
                         self._runs[run_id]["current_account"] = acct["name"]
 
                     password = enc.decrypt(acct["encrypted_password"])
+                    account_url = acct["url"]
                     tgt_account = acct["name"]
+
+                    # Extract domain from account URL
+                    parsed_url = urlparse(account_url)
+                    account_domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
 
                     browser = await p.chromium.launch(headless=True)
                     page = await browser.new_page()
                     timed_out = False
 
-                    if base_url:
-                        start_url = base_url
-                        if src_account and tgt_account != src_account:
-                            start_url = base_url.replace(f"/{src_account}/", f"/{tgt_account}/")
-                        print(f"[RUNNER] Navigating to {start_url}")
-                        await page.goto(start_url, wait_until="load", timeout=step_timeout_ms)
+                    if account_url:
+                        print(f"[RUNNER] Navigating to {account_url}")
+                        await page.goto(account_url, wait_until="load", timeout=step_timeout_ms)
                         print(f"[RUNNER] Page loaded")
 
                     for step in steps:
@@ -127,10 +136,16 @@ class RunnerSession:
                         target = step["target"]
                         value = step.get("value")
 
-                        print(f"[RUNNER] Step: {step['name']} (action={action}, target={target})")
-
-                        if src_account and tgt_account != src_account:
+                        # Replace domain and account name in target URLs
+                        if target.startswith("http") and src_account and src_account != tgt_account:
                             target = target.replace(f"/{src_account}/", f"/{tgt_account}/")
+                            # Replace domain
+                            parsed_target = urlparse(target)
+                            target_domain = f"{parsed_target.scheme}://{parsed_target.netloc}"
+                            if target_domain != account_domain:
+                                target = target.replace(target_domain, account_domain)
+
+                        print(f"[RUNNER] Step: {step['name']} (action={action}, target={target})")
 
                         if value:
                             value = (
@@ -144,10 +159,10 @@ class RunnerSession:
                         step_requests: list = []
 
                         def on_request(req, _starts=step_req_starts):
-                            if req.resource_type in ("xhr", "fetch"):
+                            if req.resource_type in ("xhr", "fetch") and "app.orcanos.com" in req.url:
                                 _starts[req] = time.monotonic()
 
-                        def on_response(resp, _starts=step_req_starts, _reqs=step_requests, _step=step["name"], _acct=tgt_account):
+                        def on_response(resp, _starts=step_req_starts, _reqs=step_requests, _step=step["name"], _acct=acct["name"]):
                             req = resp.request
                             if req in _starts:
                                 dur = round((time.monotonic() - _starts.pop(req)) * 1000)
@@ -232,6 +247,8 @@ class RunnerSession:
                 self._runs[run_id]["current_account"] = None
 
         except Exception as e:
+            print(f"[RUNNER] FATAL: {e}")
+            import traceback; traceback.print_exc()
             with self._lock:
                 self._runs[run_id]["status"] = "failed"
 

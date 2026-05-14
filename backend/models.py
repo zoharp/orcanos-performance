@@ -75,6 +75,7 @@ class StepResult(Base):
     duration_seconds = Column(Float)
     status = Column(String(50))  # 'pass', 'warning', 'critical'
     error_message = Column(String(1024))
+    requests = Column(JSON)  # [{method, url, status, duration_ms}] captured during this step
 
     # Relationships
     test_run = relationship("TestRun", back_populates="step_results")

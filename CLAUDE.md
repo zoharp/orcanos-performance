@@ -59,6 +59,7 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 - [x] Clear error messages — global exception handler returns actual error text; routes raise specific HTTPExceptions
 - [x] Fly.io deployment — Dockerfile (multi-stage), `fly.toml`, persistent volume `orcanos_data` at `/data`
 - [x] SPA routing fix — catch-all route in `api.py` serves `index.html` for all non-API paths (F5 refresh works)
+- [x] Live API call capture — Playwright XHR/fetch listeners per step; calls stored in `StepResult.requests` (JSON), streamed live to Scenarios page during run via `recent_requests` in progress response
 
 ### Next
 - [ ] Historical chart (Recharts) — trend over time per account/step
@@ -130,7 +131,7 @@ orcanos-performance/
 
 **Recorder:** `backend/services/recorder.py` runs a `RecordingSession` singleton. Playwright runs in a background thread with its own asyncio loop. The API polls `/api/scenarios/record/status` every second during recording.
 
-**Runner:** `backend/services/runner.py` runs a `RunnerSession` singleton. Replays scenario steps headless per account. Timing thresholds are read from `config.json` (defaults: < 3s = pass, 3–8s = warning, > 8s = critical). Replaces account name in navigation URLs automatically (e.g. `/orcanos/` → `/acme/`).
+**Runner:** `backend/services/runner.py` runs a `RunnerSession` singleton. Replays scenario steps headless per account. Timing thresholds are read from `config.json` (defaults: < 3s = pass, 3–8s = warning, > 8s = critical). Replaces account name in navigation URLs automatically (e.g. `/orcanos/` → `/acme/`). Per-step Playwright listeners capture XHR/fetch requests to `app.orcanos.com` only (filters out analytics/CDN noise), recording `{method, url (path only), status, duration_ms}`. Stored in `StepResult.requests` (JSON) and pushed to `run_state["recent_requests"]` (capped at 500) for live polling.
 
 **Passwords:** Stored encrypted in SQLite. `{{PASSWORD}}` placeholder in scenario steps is replaced at test runtime with the account's decrypted password.
 
