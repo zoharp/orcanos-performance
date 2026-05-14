@@ -54,18 +54,25 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    const hasRunning = runs.some(r => r.status === 'running')
-
-    if (!hasRunning) {
-      clearInterval(pollRef.current)
-      return
+    const poll = async () => {
+      await loadRuns()
+      const activeRunId = localStorage.getItem('activeRunId')
+      if (!activeRunId) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
     }
 
-    clearInterval(pollRef.current)
-    pollRef.current = setInterval(loadRuns, 5000)
+    const activeRunId = localStorage.getItem('activeRunId')
+    if (activeRunId) {
+      clearInterval(pollRef.current)
+      pollRef.current = setInterval(poll, 5000)
+    } else {
+      clearInterval(pollRef.current)
+    }
 
     return () => clearInterval(pollRef.current)
-  }, [runs])
+  }, [])
 
   async function loadRuns() {
     try {
