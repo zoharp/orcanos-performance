@@ -168,13 +168,14 @@ class RunnerSession:
                         await page.goto(account_url, wait_until="load", timeout=step_timeout_ms)
                         print(f"[RUNNER] Page loaded")
 
-                    project_id_match = None
+                    run_state_local = {'project_id': None}
 
                     # Try to extract project ID from page source: current_project: '37'
                     try:
-                        project_id_match = await page.evaluate("window.current_project || null")
-                        if project_id_match:
-                            print(f"[RUNNER] Found project ID in page: {project_id_match}")
+                        pid = await page.evaluate("window.current_project || null")
+                        if pid:
+                            run_state_local['project_id'] = str(pid)
+                            print(f"[RUNNER] Found project ID in page: {run_state_local['project_id']}")
                     except Exception:
                         pass
 
@@ -193,9 +194,9 @@ class RunnerSession:
                                 target = target.replace(target_domain, account_domain)
 
                         # Replace project IDs in URLs: find any /web/{oldProjectId}/ and replace with current project ID
-                        if target.startswith("http") and project_id_match:
+                        if target.startswith("http") and run_state_local['project_id']:
                             import re
-                            target = re.sub(r'/web/\d+/', f'/web/{project_id_match}/', target)
+                            target = re.sub(r'/web/\d+/', f'/web/{run_state_local["project_id"]}/', target)
 
                         print(f"[RUNNER] Step: {step['name']} (action={action}, target={target})")
 
@@ -241,9 +242,8 @@ class RunnerSession:
                                 try:
                                     pid = await page.evaluate("window.current_project || null")
                                     if pid:
-                                        nonlocal project_id_match
-                                        project_id_match = pid
-                                        print(f"[RUNNER] Updated project ID from page: {project_id_match}")
+                                        run_state_local['project_id'] = str(pid)
+                                        print(f"[RUNNER] Updated project ID from page: {run_state_local['project_id']}")
                                 except Exception:
                                     pass
                             elif action == "fill":
