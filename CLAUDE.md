@@ -61,7 +61,11 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 - [x] SPA routing fix — catch-all route in `api.py` serves `index.html` for all non-API paths (F5 refresh works)
 - [x] Live API call capture — Playwright XHR/fetch listeners per step; calls stored in `StepResult.requests` (JSON), streamed live to Scenarios page during run via `recent_requests` in progress response
 - [x] Dashboard auto-refresh — polls every 5 seconds while a run is active, stops automatically when run completes
-- [x] Stop run — force-closes browser and page to interrupt hanging operations
+- [x] Stop run — force-closes browser and page to interrupt hanging operations, immediate UI button state update
+- [x] Run timeout — auto-completes runs after configurable timeout (default 5 min/account) to prevent stuck runs; configurable via `config.json` `run_timeout_seconds`
+- [x] Cross-customer project ID support — automatically extracts `window.current_project` from page source and replaces project IDs in scenario URLs (e.g., `/web/37/` → `/web/123/`) for different accounts
+- [x] Element visibility waiting — click/fill actions wait for elements to be visible before execution, plus 800ms delay for menu animations
+- [x] Improved error messages — includes target selector in error output for debugging
 
 ### Next
 - [ ] Historical chart (Recharts) — trend over time per account/step
@@ -133,13 +137,19 @@ orcanos-performance/
 
 **Recorder:** `backend/services/recorder.py` runs a `RecordingSession` singleton. Playwright runs in a background thread with its own asyncio loop. The API polls `/api/scenarios/record/status` every second during recording.
 
-**Runner:** `backend/services/runner.py` runs a `RunnerSession` singleton. Replays scenario steps headless per account. Timing thresholds are read from `config.json` (defaults: < 3s = pass, 3–8s = warning, > 8s = critical). Replaces account name in navigation URLs automatically (e.g. `/orcanos/` → `/acme/`). Per-step Playwright listeners capture XHR/fetch requests to `app.orcanos.com` only (filters out analytics/CDN noise), recording `{method, url (path only), status, duration_ms}`. Stored in `StepResult.requests` (JSON) and pushed to `run_state["recent_requests"]` (capped at 500) for live polling.
+**Runner:** `backend/services/runner.py` runs a `RunnerSession` singleton. Replays scenario steps headless per account. Timing thresholds are read from `config.json` (defaults: < 3s = pass, 3–8s = warning, > 8s = critical). **URL replacements:** (1) Replaces account name automatically (e.g. `/orcanos/` → `/acme/`); (2) Extracts `window.current_project` from page source and replaces project IDs in URLs (e.g. `/web/37/` → `/web/123/` for different customers). Click/fill actions wait for element visibility + 800ms delay for menu popups. Per-step Playwright listeners capture XHR/fetch requests to `app.orcanos.com` only (filters out analytics/CDN noise), recording `{method, url (path only), status, duration_ms}`. Stored in `StepResult.requests` (JSON) and pushed to `run_state["recent_requests"]` (capped at 500) for live polling. **Run timeout:** Entire run wrapped with `asyncio.wait_for()` timeout (default 5 min/account, configurable as `run_timeout_seconds` in `config.json`). If timeout exceeded, run marked as "timed_out" and DB updated.
 
 **Passwords:** Stored encrypted in SQLite. `{{PASSWORD}}` placeholder in scenario steps is replaced at test runtime with the account's decrypted password.
 
 **DB migrations:** `init_db()` in `database.py` calls `create_all` then manually checks for missing columns via `PRAGMA table_info` and runs `ALTER TABLE`. Always add new column migrations there — SQLAlchemy `create_all` does not alter existing tables.
 
-**Config thresholds:** `config.json` at repo root stores pass/warn/timeout seconds. Read by `routes/config.py` and the runner. File is not committed (gitignored); defaults apply if missing.
+**Config thresholds:** `config.json` at repo root stores timing settings (all optional, defaults apply if missing):
+  - `pass_threshold_seconds` (default 3) — step duration < this = "pass" status
+  - `warn_threshold_seconds` (default 8) — step duration < this = "warning" status; >= = "critical"
+  - `step_timeout_seconds` (default 45) — max seconds per step before timeout
+  - `run_timeout_seconds` (default 300) — max seconds per account run; multiplied by account count for total timeout
+  
+Read by `routes/config.py` and the runner. File is not committed (gitignored).
 
 **Auth:** JWT tokens stored in browser `localStorage`. All API routes (except `/api/auth/login`) require `Authorization: Bearer <token>`. `get_current_user` dependency in `auth.py` validates the token. `require_admin` dependency gates admin-only endpoints.
 
