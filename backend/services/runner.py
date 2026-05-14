@@ -70,7 +70,25 @@ class RunnerSession:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(self._async_run(run_id, scenario_name, accounts))
+            config = _load_config()
+            run_timeout_s = int(config.get("run_timeout_seconds", 300))  # 5 min per account by default
+            total_timeout_s = run_timeout_s * len(accounts)
+            loop.run_until_complete(asyncio.wait_for(self._async_run(run_id, scenario_name, accounts), timeout=total_timeout_s))
+        except asyncio.TimeoutError:
+            print(f"[RUNNER] RUN TIMEOUT after {total_timeout_s}s, marking as timed_out")
+            with self._lock:
+                self._runs[run_id]["status"] = "timed_out"
+            from backend.services.database import SessionLocal
+            from backend.models import TestRun
+            db = SessionLocal()
+            try:
+                run = db.query(TestRun).filter(TestRun.id == run_id).first()
+                if run:
+                    run.status = "timed_out"
+                    run.completed_at = datetime.utcnow()
+                    db.commit()
+            finally:
+                db.close()
         finally:
             loop.close()
             with self._lock:
@@ -225,7 +243,10 @@ class RunnerSession:
                             timed_out = True
                             break  # skip remaining steps for this account
 
-                    await browser.close()
+                    try:
+                        await asyncio.wait_for(browser.close(), timeout=10)
+                    except (asyncio.TimeoutError, Exception) as e:
+                        print(f"[RUNNER] browser.close() error (ignoring): {e}")
 
                     with self._lock:
                         self._runs[run_id]["completed_accounts"] += 1
