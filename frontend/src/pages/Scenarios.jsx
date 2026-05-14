@@ -11,6 +11,8 @@ const STATUS_COLOR = {
   failed: { bg: '#fee2e2', color: '#dc2626' },
   running: { bg: '#dbeafe', color: '#2563eb' },
   completed: { bg: '#dcfce7', color: '#16a34a' },
+  stopped: { bg: '#fef9c3', color: '#ca8a04' },
+  timed_out: { bg: '#fee2e2', color: '#dc2626' },
 }
 
 function badge(status) {
@@ -72,6 +74,7 @@ export default function Scenarios() {
       pollRunProgress(id)
     } else {
       localStorage.removeItem('activeRunId')
+      setRunProgress(data)
     }
   }
 
@@ -189,11 +192,11 @@ export default function Scenarios() {
         if (reqFeedRef.current) {
           reqFeedRef.current.scrollTop = reqFeedRef.current.scrollHeight
         }
-        if (data.status === 'completed' || data.status === 'failed' || data.status === 'stopped') {
+        if (data.status === 'completed' || data.status === 'failed' || data.status === 'stopped' || data.status === 'timed_out') {
           clearInterval(runPollRef.current)
           setRunningScenario(null)
           localStorage.removeItem('activeRunId')
-          const msgs = { completed: 'Run completed successfully.', failed: 'Run failed.', stopped: 'Run stopped.' }
+          const msgs = { completed: 'Run completed successfully.', failed: 'Run failed.', stopped: 'Run stopped.', timed_out: 'Run timed out.' }
           setMessage({ type: data.status === 'completed' ? 'success' : 'error', text: msgs[data.status] })
         }
       } catch {}
@@ -203,7 +206,23 @@ export default function Scenarios() {
   async function stopRun() {
     const saved = localStorage.getItem('activeRunId')
     if (!saved) return
-    await fetchWithAuth(`${API}/api/runs/${saved}/stop`, { method: 'POST' })
+    try {
+      await fetchWithAuth(`${API}/api/runs/${saved}/stop`, { method: 'POST' })
+      // Immediately poll for updated status
+      setTimeout(async () => {
+        try {
+          const res = await fetchWithAuth(`${API}/api/runs/${saved}/progress`)
+          const data = await res.json()
+          setRunProgress(data)
+          if (data.status !== 'running') {
+            setRunningScenario(null)
+            clearInterval(runPollRef.current)
+            localStorage.removeItem('activeRunId')
+            setMessage({ type: 'success', text: 'Run stopped.' })
+          }
+        } catch {}
+      }, 100)
+    } catch {}
   }
 
   async function toggleSteps(name) {
