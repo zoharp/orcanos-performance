@@ -5,8 +5,8 @@ const API = ''
 
 function getRegion(url) {
   if (!url) return '—'
-  if (url.includes('app-us')) return 'US'
-  if (url.includes('app')) return 'EU'
+  if (url.includes('us.orcanos')) return 'US'
+  if (url.includes('app.orcanos')) return 'EU'
   return '—'
 }
 
