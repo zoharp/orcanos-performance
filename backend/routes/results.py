@@ -25,9 +25,10 @@ def get_run_results(run_id: int, db: Session = Depends(get_db)):
     for sr in step_results:
         acct = db.query(Account).filter(Account.id == sr.account_id).first()
         acct_name = acct.name if acct else f"account_{sr.account_id}"
+        acct_url = acct.url if acct else ""
         if acct_name not in accounts_map:
-            accounts_map[acct_name] = []
-        accounts_map[acct_name].append({
+            accounts_map[acct_name] = {"url": acct_url, "steps": []}
+        accounts_map[acct_name]["steps"].append({
             "step_name": sr.step_name,
             "duration_seconds": sr.duration_seconds,
             "status": sr.status,
@@ -41,8 +42,8 @@ def get_run_results(run_id: int, db: Session = Depends(get_db)):
         "completed_at": run.completed_at.isoformat() if run.completed_at else None,
         "status": run.status,
         "accounts": [
-            {"name": name, "steps": steps}
-            for name, steps in accounts_map.items()
+            {"name": name, "url": data["url"], "steps": data["steps"]}
+            for name, data in accounts_map.items()
         ],
     }
 

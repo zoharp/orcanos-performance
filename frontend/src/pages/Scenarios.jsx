@@ -239,7 +239,7 @@ export default function Scenarios() {
 
   function openEditScenario(s) {
     setEditingScenario(s)
-    setEditForm({ name: s.name, version: s.version || '6.0' })
+    setEditForm({ name: s.name, version: s.version || '' })
     setEditMessage(null)
   }
 
@@ -537,6 +537,7 @@ export default function Scenarios() {
                   value={editForm.version}
                   onChange={e => setEditForm(f => ({ ...f, version: e.target.value }))}
                 >
+                  <option value="">— No version —</option>
                   {VERSIONS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>

@@ -3,6 +3,13 @@ import { fetchWithAuth, isAdmin } from '../auth'
 
 const API = ''
 
+function getRegion(url) {
+  if (!url) return '—'
+  if (url.includes('app-us')) return 'US'
+  if (url.includes('app')) return 'EU'
+  return '—'
+}
+
 const STATUS = {
   pass:      { bg: '#dcfce7', color: '#16a34a', label: 'Pass' },
   warning:   { bg: '#fef9c3', color: '#ca8a04', label: 'Warn' },
@@ -55,19 +62,23 @@ export default function Dashboard() {
 
   useEffect(() => {
     const checkActiveRun = () => localStorage.getItem('activeRunId')
+    const isViewingCurrentRun = () => {
+      const activeId = checkActiveRun()
+      return activeId && selectedRun && parseInt(activeId) === selectedRun.id
+    }
 
     const startPolling = () => {
       if (pollRef.current) clearInterval(pollRef.current)
       pollRef.current = setInterval(async () => {
         await loadRuns()
-        if (!checkActiveRun()) {
+        if (!isViewingCurrentRun()) {
           clearInterval(pollRef.current)
           pollRef.current = null
         }
       }, 5000)
     }
 
-    if (checkActiveRun()) {
+    if (isViewingCurrentRun()) {
       startPolling()
     } else {
       if (pollRef.current) clearInterval(pollRef.current)
@@ -75,9 +86,9 @@ export default function Dashboard() {
     }
 
     const interval = setInterval(() => {
-      const isActive = !!checkActiveRun()
-      if (isActive && !pollRef.current) startPolling()
-      else if (!isActive && pollRef.current) {
+      const viewing = isViewingCurrentRun()
+      if (viewing && !pollRef.current) startPolling()
+      else if (!viewing && pollRef.current) {
         clearInterval(pollRef.current)
         pollRef.current = null
       }
@@ -87,7 +98,7 @@ export default function Dashboard() {
       clearInterval(pollRef.current)
       clearInterval(interval)
     }
-  }, [])
+  }, [selectedRun])
 
   async function loadRuns() {
     try {
@@ -205,6 +216,9 @@ export default function Dashboard() {
                         <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, fontSize: 12, borderBottom: '1px solid #e5e7eb', minWidth: 120 }}>
                           Account
                         </th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600, fontSize: 12, borderBottom: '1px solid #e5e7eb', minWidth: 60 }}>
+                          Region
+                        </th>
                         {stepNames.map(name => (
                           <th key={name} style={{
                             padding: '6px 8px', fontWeight: 500, fontSize: 11,
@@ -234,6 +248,9 @@ export default function Dashboard() {
                           <tr key={acct.name} style={{ borderBottom: '1px solid #f3f4f6' }}>
                             <td style={{ padding: '8px 12px', fontWeight: 600, fontSize: 13 }}>
                               {acct.name}
+                            </td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: 12, color: '#6b7280' }}>
+                              {getRegion(acct.url)}
                             </td>
                             {stepNames.map(name => (
                               stepMap[name]
