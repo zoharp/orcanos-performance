@@ -37,6 +37,8 @@ class RunnerSession:
         self._runs: Dict[int, dict] = {}
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._current_page = None
+        self._current_browser = None
 
     def start(self, run_id: int, scenario_name: str, accounts: List[dict]):
         with self._lock:
@@ -61,6 +63,19 @@ class RunnerSession:
 
     def stop(self):
         self._stop_event.set()
+        # Force close current page/browser to interrupt any waiting operations
+        if self._current_page:
+            try:
+                self._current_page.close()
+            except Exception:
+                pass
+        if self._current_browser:
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                loop.create_task(self._current_browser.close())
+            except Exception:
+                pass
 
     def get_progress(self, run_id: int) -> Optional[dict]:
         with self._lock:
@@ -143,6 +158,10 @@ class RunnerSession:
                     browser = await p.chromium.launch(headless=True)
                     page = await browser.new_page()
                     timed_out = False
+
+                    with self._lock:
+                        self._current_browser = browser
+                        self._current_page = page
 
                     if account_url:
                         print(f"[RUNNER] Navigating to {account_url}")
@@ -250,6 +269,8 @@ class RunnerSession:
 
                     with self._lock:
                         self._runs[run_id]["completed_accounts"] += 1
+                        self._current_browser = None
+                        self._current_page = None
 
                     if self._stop_event.is_set():
                         break
@@ -279,6 +300,9 @@ class RunnerSession:
                 run.completed_at = datetime.utcnow()
                 db.commit()
         finally:
+            with self._lock:
+                self._current_browser = None
+                self._current_page = None
             db.close()
 
 

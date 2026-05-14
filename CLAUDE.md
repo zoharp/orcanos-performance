@@ -60,6 +60,8 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 - [x] Fly.io deployment — Dockerfile (multi-stage), `fly.toml`, persistent volume `orcanos_data` at `/data`
 - [x] SPA routing fix — catch-all route in `api.py` serves `index.html` for all non-API paths (F5 refresh works)
 - [x] Live API call capture — Playwright XHR/fetch listeners per step; calls stored in `StepResult.requests` (JSON), streamed live to Scenarios page during run via `recent_requests` in progress response
+- [x] Dashboard auto-refresh — polls every 5 seconds while a run is active, stops automatically when run completes
+- [x] Stop run — force-closes browser and page to interrupt hanging operations
 
 ### Next
 - [ ] Historical chart (Recharts) — trend over time per account/step
@@ -142,6 +144,10 @@ orcanos-performance/
 **Auth:** JWT tokens stored in browser `localStorage`. All API routes (except `/api/auth/login`) require `Authorization: Bearer <token>`. `get_current_user` dependency in `auth.py` validates the token. `require_admin` dependency gates admin-only endpoints.
 
 **SPA routing:** `api.py` has a catch-all `GET /{full_path:path}` that serves real files from `frontend/dist/` if they exist, otherwise returns `index.html`. This makes F5/refresh work for all React routes.
+
+**Dashboard polling:** `Dashboard.jsx` checks `localStorage.activeRunId` to detect if a run is active (set by `Scenarios.jsx`). When active, it polls `/api/results/runs` every 5 seconds to refresh the runs list and results. Polling stops automatically when the active run ID is cleared (run completes or is stopped). Uses `localStorage` instead of React state so the Dashboard picks up runs started from the Scenarios page.
+
+**Stop run:** `RunnerSession.stop()` in `runner.py` sets a stop event and force-closes the current Playwright browser/page to interrupt hanging operations (e.g., `page.goto()` with timeout). Stores `_current_browser` and `_current_page` refs during replay so they can be closed immediately. Cleanup runs in the finally block.
 
 **Fly.io deployment:** App is live at `https://orcanos-performance.fly.dev/`. Single machine (`d8dd330b71d198`) in Amsterdam with auto-stop/start. Persistent volume `orcanos_data` mounted at `/data` — DB at `/data/orcanos_performance.db`, scenarios at `/data/scenarios/`. Deploy with `flyctl deploy`. The `/data` directory must have `chmod 777` for SQLite writes (set once via SSH; persists on the volume).
 
