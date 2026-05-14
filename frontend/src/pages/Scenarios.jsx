@@ -441,6 +441,7 @@ export default function Scenarios() {
                       <option value="all">All accounts</option>
                       {accounts
                         .filter(a => a.enabled && (!s.version || a.version === s.version))
+                        .sort((a, b) => a.name.localeCompare(b.name))
                         .map(a => <option key={a.id} value={a.id}>{a.name}</option>)
                       }
                     </select>

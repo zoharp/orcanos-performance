@@ -208,7 +208,7 @@ export default function Accounts() {
               </tr>
             </thead>
             <tbody>
-              {accounts.map(a => (
+              {accounts.sort((a, b) => a.name.localeCompare(b.name)).map(a => (
                 <tr key={a.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={tdStyle}><strong>{a.name}</strong></td>
                   <td style={{ ...tdStyle, color: '#6b7280', fontSize: 13 }}>{a.url}</td>

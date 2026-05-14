@@ -7,10 +7,13 @@ import threading
 import asyncio
 import json
 import time
+import logging
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
+
+logger = logging.getLogger("runner")
 
 import os as _os
 SCENARIOS_DIR = Path(_os.getenv("SCENARIOS_DIR", str(Path(__file__).parent.parent / "scenarios")))
@@ -53,6 +56,8 @@ class RunnerSession:
                 "completed_accounts": 0,
                 "total_accounts": len(accounts),
                 "recent_requests": [],
+                "error": None,
+                "failed_at_account": None,
             }
         self._thread = threading.Thread(
             target=self._run,
@@ -79,35 +84,29 @@ class RunnerSession:
 
     def get_progress(self, run_id: int) -> Optional[dict]:
         with self._lock:
-            return dict(self._runs.get(run_id, {}))
+            progress = dict(self._runs.get(run_id, {}))
+            if progress:
+                total = progress.get("total_accounts", 1)
+                completed = progress.get("completed_accounts", 0)
+                progress["completion_percent"] = int((completed / total) * 100) if total > 0 else 0
+            return progress
 
     def _run(self, run_id: int, scenario_name: str, accounts: List[dict]):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            config = _load_config()
-            run_timeout_s = int(config.get("run_timeout_seconds", 300))  # 5 min per account by default
-            total_timeout_s = run_timeout_s * len(accounts)
-            loop.run_until_complete(asyncio.wait_for(self._async_run(run_id, scenario_name, accounts), timeout=total_timeout_s))
-        except asyncio.TimeoutError:
-            print(f"[RUNNER] RUN TIMEOUT after {total_timeout_s}s, marking as timed_out")
+            logger.info(f"[RUNNER] Starting run {run_id} with {len(accounts)} accounts")
+            loop.run_until_complete(self._async_run(run_id, scenario_name, accounts))
+        except Exception as e:
+            logger.error(f"[RUNNER] Run {run_id} failed: {e}", exc_info=True)
             with self._lock:
-                self._runs[run_id]["status"] = "timed_out"
-            from backend.services.database import SessionLocal
-            from backend.models import TestRun
-            db = SessionLocal()
-            try:
-                run = db.query(TestRun).filter(TestRun.id == run_id).first()
-                if run:
-                    run.status = "timed_out"
-                    run.completed_at = datetime.utcnow()
-                    db.commit()
-            finally:
-                db.close()
+                self._runs[run_id]["status"] = "failed"
+                self._runs[run_id]["error"] = str(e)[:500]
         finally:
             loop.close()
             with self._lock:
                 self.active = False
+                logger.info(f"[RUNNER] Run {run_id} completed with status: {self._runs[run_id].get('status')}")
 
     async def _async_run(self, run_id: int, scenario_name: str, accounts: List[dict]):
         from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
@@ -126,7 +125,6 @@ class RunnerSession:
         steps = scenario["steps"]
 
         enc = get_encryption_service()
-        db = SessionLocal()
 
         # Extract source account name from first step target URL
         src_account = None
@@ -143,200 +141,238 @@ class RunnerSession:
 
         try:
             async with async_playwright() as p:
-                for acct in accounts:
-                    with self._lock:
-                        self._runs[run_id]["current_account"] = acct["name"]
-
-                    password = enc.decrypt(acct["encrypted_password"])
-                    account_url = acct["url"]
-                    tgt_account = acct["name"]
-
-                    # Extract domain from account URL
-                    parsed_url = urlparse(account_url)
-                    account_domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
-
-                    browser = await p.chromium.launch(headless=True)
-                    page = await browser.new_page()
-                    timed_out = False
+                for idx, acct in enumerate(accounts):
+                    account_name = acct["name"]
+                    completed_before = idx
+                    total = len(accounts)
 
                     with self._lock:
-                        self._current_browser = browser
-                        self._current_page = page
+                        self._runs[run_id]["current_account"] = account_name
 
-                    if account_url:
-                        print(f"[RUNNER] Navigating to {account_url}")
-                        await page.goto(account_url, wait_until="load", timeout=step_timeout_ms)
-                        print(f"[RUNNER] Page loaded")
+                    logger.info(f"[{account_name}] Starting ({completed_before}/{total})")
 
-                    run_state_local = {'project_id': None}
-
-                    # Try to extract project ID from page source: current_project: '37'
+                    db = SessionLocal()  # Fresh session per account
                     try:
-                        pid = await page.evaluate("window.current_project || null")
-                        if pid:
-                            run_state_local['project_id'] = str(pid)
-                            print(f"[RUNNER] Found project ID in page: {run_state_local['project_id']}")
-                    except Exception:
-                        pass
+                        password = enc.decrypt(acct["encrypted_password"])
+                        account_url = acct["url"]
+                        tgt_account = account_name
 
-                    for step in steps:
-                        action = step["action"]
-                        target = step["target"]
-                        value = step.get("value")
+                        # Extract domain from account URL
+                        parsed_url = urlparse(account_url)
+                        account_domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
 
-                        # Replace domain and account name in target URLs
-                        if target.startswith("http") and src_account and src_account != tgt_account:
-                            target = target.replace(f"/{src_account}/", f"/{tgt_account}/")
-                            # Replace domain
-                            parsed_target = urlparse(target)
-                            target_domain = f"{parsed_target.scheme}://{parsed_target.netloc}"
-                            if target_domain != account_domain:
-                                target = target.replace(target_domain, account_domain)
+                        browser = await p.chromium.launch(headless=True)
+                        page = await browser.new_page()
+                        timed_out = False
 
-                        # Replace project IDs in URLs: find any /web/{oldProjectId}/ and replace with current project ID
-                        if target.startswith("http") and run_state_local['project_id']:
-                            import re
-                            target = re.sub(r'/web/\d+/', f'/web/{run_state_local["project_id"]}/', target)
+                        with self._lock:
+                            self._current_browser = browser
+                            self._current_page = page
 
-                        print(f"[RUNNER] Step: {step['name']} (action={action}, target={target})")
+                        if account_url:
+                            logger.info(f"[{account_name}] Navigating to {account_url}")
+                            await page.goto(account_url, wait_until="load", timeout=step_timeout_ms)
+                            logger.info(f"[{account_name}] Page loaded")
 
-                        if value:
-                            value = (
-                                value
-                                .replace("{{PASSWORD}}", password)
-                                .replace("{{USER}}", "orcanos.tech")
+                        run_state_local = {'project_id': None}
+
+                        # Try to extract project ID from page source: current_project: '37'
+                        try:
+                            pid = await page.evaluate("window.current_project || null")
+                            if pid:
+                                run_state_local['project_id'] = str(pid)
+                                logger.info(f"[{account_name}] Found project ID: {run_state_local['project_id']}")
+                        except Exception:
+                            pass
+
+                        for step in steps:
+                            action = step["action"]
+                            target = step["target"]
+                            value = step.get("value")
+
+                            # Replace domain and account name in target URLs
+                            if target.startswith("http") and src_account and src_account != tgt_account:
+                                target = target.replace(f"/{src_account}/", f"/{tgt_account}/")
+                                # Replace domain
+                                parsed_target = urlparse(target)
+                                target_domain = f"{parsed_target.scheme}://{parsed_target.netloc}"
+                                if target_domain != account_domain:
+                                    target = target.replace(target_domain, account_domain)
+
+                            # Replace project IDs in URLs: find any /web/{oldProjectId}/ and replace with current project ID
+                            if target.startswith("http") and run_state_local['project_id']:
+                                import re
+                                target = re.sub(r'/web/\d+/', f'/web/{run_state_local["project_id"]}/', target)
+
+                            logger.debug(f"[{account_name}] Step: {step['name']} (action={action})")
+
+                            if value:
+                                value = (
+                                    value
+                                    .replace("{{PASSWORD}}", password)
+                                    .replace("{{USER}}", "orcanos.tech")
+                                )
+
+                            # Per-step network capture
+                            step_req_starts: dict = {}
+                            step_requests: list = []
+
+                            def on_request(req, _starts=step_req_starts):
+                                if req.resource_type in ("xhr", "fetch") and "app.orcanos.com" in req.url:
+                                    _starts[req] = time.monotonic()
+
+                            def on_response(resp, _starts=step_req_starts, _reqs=step_requests, _step=step["name"], _acct=account_name):
+                                req = resp.request
+                                if req in _starts:
+                                    dur = round((time.monotonic() - _starts.pop(req)) * 1000)
+                                    path = urlparse(req.url).path
+                                    entry = {"method": req.method, "url": path, "status": resp.status, "duration_ms": dur}
+                                    _reqs.append(entry)
+                                    run_state = self._runs.get(run_id)
+                                    if run_state is not None and len(run_state["recent_requests"]) < 500:
+                                        run_state["recent_requests"].append({**entry, "step": _step, "account": _acct})
+
+                            page.on("request", on_request)
+                            page.on("response", on_response)
+
+                            t_start = datetime.utcnow()
+                            t0 = time.monotonic()
+                            error_msg = None
+                            step_timed_out = False
+
+                            try:
+                                logger.debug(f"[{account_name}] Executing {action}...")
+                                if action == "navigate":
+                                    await page.goto(target, wait_until="load", timeout=step_timeout_ms)
+                                    # Try to extract project ID from page source after navigate
+                                    try:
+                                        pid = await page.evaluate("window.current_project || null")
+                                        if pid:
+                                            run_state_local['project_id'] = str(pid)
+                                            logger.debug(f"[{account_name}] Updated project ID: {run_state_local['project_id']}")
+                                    except Exception:
+                                        pass
+                                elif action == "fill":
+                                    await page.wait_for_selector(target, state="visible", timeout=step_timeout_ms)
+                                    await page.fill(target, value or "", timeout=step_timeout_ms)
+                                elif action == "click":
+                                    # Add delay for menu popups to appear/animate
+                                    await page.wait_for_timeout(800)
+                                    # Wait for element to be visible before clicking
+                                    try:
+                                        await page.wait_for_selector(target, state="visible", timeout=5000)
+                                    except PlaywrightTimeout:
+                                        # Try without visibility requirement
+                                        await page.wait_for_selector(target, timeout=5000)
+                                    await page.click(target, timeout=step_timeout_ms)
+                                    try:
+                                        await page.wait_for_load_state("load", timeout=step_timeout_ms)
+                                    except PlaywrightTimeout:
+                                        pass
+                                logger.debug(f"[{account_name}] {action} completed")
+                            except PlaywrightTimeout:
+                                step_timed_out = True
+                                error_msg = f"timeout({step_timeout_s}s)"
+                                logger.error(f"[{account_name}] TIMEOUT: {error_msg}")
+                            except Exception as e:
+                                error_msg = str(e)[:500]
+                                logger.error(f"[{account_name}] Step failed: {error_msg}")
+
+                            page.remove_listener("request", on_request)
+                            page.remove_listener("response", on_response)
+
+                            duration = time.monotonic() - t0
+                            status = "timeout" if step_timed_out else ("failed" if error_msg else _step_status(duration, pass_t, warn_t))
+                            logger.info(f"[{account_name}] Step '{step['name']}': {duration:.2f}s ({status})")
+
+                            sr = StepResult(
+                                run_id=run_id,
+                                account_id=acct["id"],
+                                step_name=step["name"],
+                                start_time=t_start,
+                                end_time=datetime.utcnow(),
+                                duration_seconds=round(duration, 3),
+                                status=status,
+                                error_message=error_msg,
+                                requests=step_requests or None,
                             )
+                            db.add(sr)
+                            db.commit()
 
-                        # Per-step network capture
-                        step_req_starts: dict = {}
-                        step_requests: list = []
+                            if step_timed_out or self._stop_event.is_set():
+                                timed_out = True
+                                break  # skip remaining steps for this account
 
-                        def on_request(req, _starts=step_req_starts):
-                            if req.resource_type in ("xhr", "fetch") and "app.orcanos.com" in req.url:
-                                _starts[req] = time.monotonic()
-
-                        def on_response(resp, _starts=step_req_starts, _reqs=step_requests, _step=step["name"], _acct=acct["name"]):
-                            req = resp.request
-                            if req in _starts:
-                                dur = round((time.monotonic() - _starts.pop(req)) * 1000)
-                                path = urlparse(req.url).path
-                                entry = {"method": req.method, "url": path, "status": resp.status, "duration_ms": dur}
-                                _reqs.append(entry)
-                                run_state = self._runs.get(run_id)
-                                if run_state is not None and len(run_state["recent_requests"]) < 500:
-                                    run_state["recent_requests"].append({**entry, "step": _step, "account": _acct})
-
-                        page.on("request", on_request)
-                        page.on("response", on_response)
-
-                        t_start = datetime.utcnow()
-                        t0 = time.monotonic()
-                        error_msg = None
-                        step_timed_out = False
+                        # Clean up browser for this account
+                        try:
+                            if page:
+                                await page.close()
+                        except Exception:
+                            pass
 
                         try:
-                            print(f"[RUNNER]   Executing {action}...")
-                            if action == "navigate":
-                                await page.goto(target, wait_until="load", timeout=step_timeout_ms)
-                                # Try to extract project ID from page source after navigate
-                                try:
-                                    pid = await page.evaluate("window.current_project || null")
-                                    if pid:
-                                        run_state_local['project_id'] = str(pid)
-                                        print(f"[RUNNER] Updated project ID from page: {run_state_local['project_id']}")
-                                except Exception:
-                                    pass
-                            elif action == "fill":
-                                await page.wait_for_selector(target, state="visible", timeout=step_timeout_ms)
-                                await page.fill(target, value or "", timeout=step_timeout_ms)
-                            elif action == "click":
-                                # Add delay for menu popups to appear/animate
-                                await page.wait_for_timeout(800)
-                                # Wait for element to be visible before clicking
-                                try:
-                                    await page.wait_for_selector(target, state="visible", timeout=5000)
-                                except PlaywrightTimeout:
-                                    # Try without visibility requirement
-                                    await page.wait_for_selector(target, timeout=5000)
-                                await page.click(target, timeout=step_timeout_ms)
-                                try:
-                                    await page.wait_for_load_state("load", timeout=step_timeout_ms)
-                                except PlaywrightTimeout:
-                                    pass
-                            print(f"[RUNNER]   {action} completed")
-                        except PlaywrightTimeout:
-                            step_timed_out = True
-                            error_msg = f"timeout({step_timeout_s}s)"
-                            print(f"[RUNNER]   TIMEOUT: {error_msg}")
+                            await asyncio.wait_for(browser.close(), timeout=3)
+                        except asyncio.TimeoutError:
+                            logger.warning(f"[{account_name}] Browser close timeout, force killing")
                         except Exception as e:
-                            error_msg = str(e)[:500]
-                            print(f"[RUNNER]   ERROR: {error_msg} | target={target}")
+                            logger.warning(f"[{account_name}] Browser cleanup error: {e}")
 
-                        page.remove_listener("request", on_request)
-                        page.remove_listener("response", on_response)
+                        with self._lock:
+                            self._runs[run_id]["completed_accounts"] += 1
+                            self._current_browser = None
+                            self._current_page = None
 
-                        duration = time.monotonic() - t0
+                        logger.info(f"[{account_name}] Completed")
 
-                        sr = StepResult(
-                            run_id=run_id,
-                            account_id=acct["id"],
-                            step_name=step["name"],
-                            start_time=t_start,
-                            end_time=datetime.utcnow(),
-                            duration_seconds=round(duration, 3),
-                            status="timeout" if step_timed_out else ("failed" if error_msg else _step_status(duration, pass_t, warn_t)),
-                            error_message=error_msg,
-                            requests=step_requests or None,
-                        )
-                        db.add(sr)
-                        db.commit()
+                        if self._stop_event.is_set():
+                            break
 
-                        if step_timed_out or self._stop_event.is_set():
-                            timed_out = True
-                            break  # skip remaining steps for this account
+                    except Exception as e:
+                        error_msg = f"Account {account_name}: {str(e)[:500]}"
+                        logger.error(f"[RUNNER] {error_msg}", exc_info=True)
+                        with self._lock:
+                            self._runs[run_id]["error"] = error_msg
+                            self._runs[run_id]["failed_at_account"] = account_name
+                        raise
+                    finally:
+                        db.close()
 
-                    try:
-                        await asyncio.wait_for(browser.close(), timeout=10)
-                    except (asyncio.TimeoutError, Exception) as e:
-                        print(f"[RUNNER] browser.close() error (ignoring): {e}")
+                stopped = self._stop_event.is_set()
+                final_status = "stopped" if stopped else "completed"
 
-                    with self._lock:
-                        self._runs[run_id]["completed_accounts"] += 1
-                        self._current_browser = None
-                        self._current_page = None
+                db_final = SessionLocal()
+                try:
+                    run = db_final.query(TestRun).filter(TestRun.id == run_id).first()
+                    if run:
+                        run.status = final_status
+                        run.completed_at = datetime.utcnow()
+                        db_final.commit()
+                finally:
+                    db_final.close()
 
-                    if self._stop_event.is_set():
-                        break
-
-            stopped = self._stop_event.is_set()
-            final_status = "stopped" if stopped else "completed"
-
-            run = db.query(TestRun).filter(TestRun.id == run_id).first()
-            if run:
-                run.status = final_status
-                run.completed_at = datetime.utcnow()
-                db.commit()
-
-            with self._lock:
-                self._runs[run_id]["status"] = final_status
-                self._runs[run_id]["current_account"] = None
+                with self._lock:
+                    self._runs[run_id]["status"] = final_status
+                    self._runs[run_id]["current_account"] = None
 
         except Exception as e:
-            print(f"[RUNNER] FATAL: {e}")
-            import traceback; traceback.print_exc()
+            logger.error(f"[RUNNER] FATAL: {e}", exc_info=True)
             with self._lock:
                 self._runs[run_id]["status"] = "failed"
+                self._runs[run_id]["error"] = str(e)[:500]
 
-            run = db.query(TestRun).filter(TestRun.id == run_id).first()
-            if run:
-                run.status = "failed"
-                run.completed_at = datetime.utcnow()
-                db.commit()
+            db_final = SessionLocal()
+            try:
+                run = db_final.query(TestRun).filter(TestRun.id == run_id).first()
+                if run:
+                    run.status = "failed"
+                    run.completed_at = datetime.utcnow()
+                    db_final.commit()
+            finally:
+                db_final.close()
         finally:
             with self._lock:
                 self._current_browser = None
                 self._current_page = None
-            db.close()
 
 
 runner = RunnerSession()

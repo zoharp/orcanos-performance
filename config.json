@@ -1,5 +1,10 @@
 {
   "step_timeout_seconds": 60,
   "pass_threshold_seconds": 5.0,
-  "warn_threshold_seconds": 10.0
+  "warn_threshold_seconds": 10.0,
+  "batch_size": 30,
+  "max_concurrent_browsers": 1,
+  "page_close_timeout_seconds": 3,
+  "browser_close_timeout_seconds": 5,
+  "enable_detailed_logging": true
 }
