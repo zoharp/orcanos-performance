@@ -149,19 +149,19 @@ class ManualTesterSession:
 
                 # Fill email
                 logger.info(f"[Account {account_id}] Waiting for login email field...")
-                await asyncio.wait_for(page.wait_for_selector("#kabab-login", state="visible", timeout=10000), timeout=12)
+                await asyncio.wait_for(page.wait_for_selector("#kabab-login", state="attached", timeout=20000), timeout=25)
                 await page.fill("#kabab-login", email)
                 logger.info(f"[Account {account_id}] Email filled")
 
                 # Fill password
                 logger.info(f"[Account {account_id}] Waiting for password field...")
-                await asyncio.wait_for(page.wait_for_selector("#kabab-password", state="visible", timeout=10000), timeout=12)
+                await asyncio.wait_for(page.wait_for_selector("#kabab-password", state="attached", timeout=20000), timeout=25)
                 await page.fill("#kabab-password", password)
                 logger.info(f"[Account {account_id}] Password filled")
 
                 # Click login
                 logger.info(f"[Account {account_id}] Waiting for login button...")
-                await asyncio.wait_for(page.wait_for_selector("#kabab-btn-loading", state="visible", timeout=10000), timeout=12)
+                await asyncio.wait_for(page.wait_for_selector("#kabab-btn-loading", state="attached", timeout=20000), timeout=25)
                 logger.info(f"[Account {account_id}] Clicking login button")
                 await page.click("#kabab-btn-loading")
 

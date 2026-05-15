@@ -69,6 +69,7 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 - [x] Manual test feature — "Test" button on Accounts page auto-logs in and opens app in new tab
 - [x] Timing fix — changed to `domcontentloaded` instead of `load` to measure UX (not background resources)
 - [x] Request filtering — ignore `/collect` and `/telemetry` endpoints in request capture
+- [x] Google OAuth login — Sign in with Google for @orcanos.com employees only; auto-creates users on first login; admin/password login hidden on production, visible only in development
 
 ### Next
 - [ ] Historical chart (Recharts) — trend over time per account/step
@@ -98,14 +99,14 @@ orcanos-performance/
 │   ├── models.py              ← SQLAlchemy models (Account, Scenario, TestRun, StepResult, User)
 │   ├── scenarios/             ← saved scenario JSON files (local); /data/scenarios/ on Fly
 │   ├── services/
-│   │   ├── auth.py            ← JWT auth + get_current_user + require_admin dependencies
+│   │   ├── auth.py            ← JWT auth + Google OAuth token verification + get_current_user + require_admin dependencies
 │   │   ├── database.py        ← SQLite engine, session, init_db (create_all + ALTER TABLE migrations)
 │   │   ├── encryption.py      ← Fernet AES-256 encrypt/decrypt
 │   │   ├── recorder.py        ← Playwright recording session (background thread)
 │   │   ├── runner.py          ← Playwright headless replay, per-step timing, StepResult persistence
 │   │   └── manual_tester.py   ← Manual test session (headless login, returns app URL for user to open)
 │   └── routes/
-│       ├── auth.py            ← POST /api/auth/login, /logout, /verify
+│       ├── auth.py            ← POST /api/auth/login, /api/auth/google, /logout
 │       ├── accounts.py        ← CRUD /api/accounts/, manual test /api/accounts/{id}/manual-test/{start|stop|status}
 │       ├── scenarios.py       ← /api/scenarios/record/*, list, get, edit, delete
 │       ├── runs.py            ← POST /api/runs/, GET /api/runs/{id}/progress
@@ -186,6 +187,28 @@ DATABASE_URL=sqlite:///./orcanos_performance.db
 
 ---
 
+## Authentication & Login
+
+**Google OAuth (Primary)** — Sign in with Google for @orcanos.com employees:
+- Frontend: Google Identity Services (GIS) SDK renders a native Google button; user clicks → Google popup → ID token sent to backend
+- Backend: `verify_google_token()` in `auth.py` verifies the token with Google's public keys, checks email domain ends with `@orcanos.com`
+- User auto-created on first login with email as username, role = "admin"
+- Returns JWT token (same as password login); stored in `localStorage`
+- **Setup:** Create Google OAuth Client ID at https://console.cloud.google.com, add to `GOOGLE_CLIENT_ID` env var (both backend and `VITE_GOOGLE_CLIENT_ID` frontend)
+
+**Admin Login (Fallback)** — Username/password login for offline/testing:
+- Hidden on production (build mode); shown only in development (`npm run dev`)
+- Seeded users: `admin` and `user` (passwords from `ADMIN_PASSWORD`/`USER_PASSWORD` env vars)
+- Hashed with bcrypt; stored in SQLite `users` table
+- Useful for CI/testing when Google OAuth unavailable
+
+**User Model:**
+- `id` (PK), `username` (unique), `email` (unique, nullable), `hashed_password` (nullable — NULL for OAuth users), `role` ('admin' or 'user'), `created_at`
+- Google OAuth users have `email` set, `hashed_password = NULL`
+- Legacy password users have `hashed_password` set, `email = NULL`
+
+---
+
 ## How to Run
 
 **Locally:**
@@ -202,8 +225,16 @@ flyctl deploy     ← builds Docker image, pushes, rolls out (takes ~2 min)
 
 **First-time local setup:**
 1. `setup.bat` — creates venv, installs deps, runs `playwright install chromium`
-2. Copy `.env.example` → `.env` and fill in `ADMIN_PASSWORD` + `ENCRYPTION_KEY`
-3. `run.bat`
+2. Copy `.env.example` → `.env` and fill in:
+   - `ADMIN_PASSWORD`, `ENCRYPTION_KEY`, `SECRET_KEY`
+   - `GOOGLE_CLIENT_ID` (create at https://console.cloud.google.com; add `http://localhost:5173` as authorized origin)
+3. Copy `.env.example` → `frontend/.env.local` and set `VITE_GOOGLE_CLIENT_ID` (same value)
+4. `run.bat`
+
+**First-time Fly.io deployment:**
+1. `flyctl deploy` — builds and rolls out
+2. `flyctl secrets set GOOGLE_CLIENT_ID=<your-client-id>` — set OAuth credentials on Fly
+3. Visit https://orcanos-performance.fly.dev and sign in with @orcanos.com account
 
 ---
 
@@ -222,3 +253,9 @@ flyctl deploy     ← builds Docker image, pushes, rolls out (takes ~2 min)
 **Fly SQLite readonly:** The `/data` volume must be writable. Run once via SSH: `flyctl ssh console --app orcanos-performance -C "chmod 777 /data"`. This persists on the volume across restarts.
 
 **Fly machine stopped:** The machine auto-stops when idle and auto-starts on first request (cold start ~5s). Use `flyctl machine start d8dd330b71d198` to pre-warm it.
+
+**Google OAuth issues:**
+- "Google Sign-In library failed to load" — Check `VITE_GOOGLE_CLIENT_ID` is set; reload page with hard refresh (Ctrl+Shift+R)
+- "Access restricted to Orcanos employees" — Only @orcanos.com accounts allowed; try a different Google account
+- "Token verification failed" — Mismatch between `GOOGLE_CLIENT_ID` (backend) and `VITE_GOOGLE_CLIENT_ID` (frontend), or authorized origins not added to Google Cloud project
+- Admin login not showing — On production (`npm run build`), admin login is intentionally hidden; it's visible only in dev mode (`npm run dev`)
