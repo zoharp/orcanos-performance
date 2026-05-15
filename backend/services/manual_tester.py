@@ -26,10 +26,10 @@ class ManualTesterSession:
                 raise RuntimeError(f"Session already active for account {account_id}")
 
             self.active_sessions[account_id] = {
-                "status": "starting",
+                "status": "logging_in",
                 "browser": None,
                 "page": None,
-                "last_activity": time.time(),
+                "app_url": None,
                 "error": None,
             }
 
@@ -63,16 +63,12 @@ class ManualTesterSession:
         with self._lock:
             session = self.active_sessions.get(account_id)
             if not session:
-                return {"status": "inactive"}
-
-            last_activity = session.get("last_activity", 0)
-            elapsed = time.time() - last_activity
-            inactivity_seconds = int(300 - elapsed)  # 5 min = 300s
+                return {"status": "inactive", "app_url": None, "error": None}
 
             return {
                 "status": session.get("status"),
                 "error": session.get("error"),
-                "inactivity_seconds": max(0, inactivity_seconds),
+                "app_url": session.get("app_url"),
             }
 
     async def _safe_close_page(self, page):
@@ -111,9 +107,9 @@ class ManualTesterSession:
         from playwright.async_api import async_playwright
 
         async with async_playwright() as p:
-            # Open headed Chromium browser (user can see it)
+            # Open headless Chromium browser to test login
             try:
-                browser = await p.chromium.launch(headless=False)
+                browser = await p.chromium.launch(headless=True)
             except Exception as e:
                 logger.error(f"[Account {account_id}] Failed to launch browser: {e}")
                 raise
@@ -169,42 +165,14 @@ class ManualTesterSession:
                 await page.wait_for_load_state("domcontentloaded", timeout=15000)
                 logger.info(f"[Account {account_id}] Login successful, final URL: {page.url}")
 
+                # Login successful - get the app URL
+                final_url = page.url
+                logger.info(f"[Account {account_id}] Login successful, final URL: {final_url}")
+
                 with self._lock:
-                    self.active_sessions[account_id]["status"] = "ready"
-                    self.active_sessions[account_id]["last_activity"] = time.time()
-
-                logger.info(f"[Account {account_id}] Manual test session ready")
-
-                # Monitor inactivity — close after 5 min (300s) with no activity
-                # Track activity via page interactions or user closing the window
-                last_title = None
-                while True:
-                    await asyncio.sleep(5)  # Check every 5s
-
-                    with self._lock:
-                        if account_id not in self.active_sessions:
-                            break  # Session was stopped
-
-                    # Check if page is still alive (user hasn't closed it)
-                    try:
-                        title = await page.title()
-                        # If title changed, user is interacting - reset inactivity timer
-                        if title != last_title:
-                            last_title = title
-                            with self._lock:
-                                if account_id in self.active_sessions:
-                                    self.active_sessions[account_id]["last_activity"] = time.time()
-                    except Exception:
-                        logger.info(f"[Account {account_id}] Browser was closed by user")
-                        break
-
-                    # Check inactivity timeout
-                    with self._lock:
-                        if account_id in self.active_sessions:
-                            elapsed = time.time() - self.active_sessions[account_id]["last_activity"]
-                            if elapsed > 300:  # 5 minutes
-                                logger.info(f"[Account {account_id}] Closing session due to inactivity")
-                                break
+                    if account_id in self.active_sessions:
+                        self.active_sessions[account_id]["status"] = "success"
+                        self.active_sessions[account_id]["app_url"] = final_url
 
             except Exception as e:
                 logger.error(f"[Account {account_id}] Login failed: {e}")

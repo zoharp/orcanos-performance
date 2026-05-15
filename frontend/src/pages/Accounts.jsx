@@ -295,20 +295,19 @@ export default function Accounts() {
                         }}>
                           {a.enabled ? 'Enabled' : 'Disabled'}
                         </span>
-                        {isTestingActive && (
-                          <div style={{ marginTop: 6, fontSize: 12, color: '#b45309', fontWeight: 600 }}>
-                            🔴 Testing ({testSession.timer}s)
-                          </div>
-                        )}
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        {isTestingActive ? (
-                          <button onClick={() => stopManualTest(a.id)} style={{ ...smallBtn, background: '#fef2f2', color: '#dc2626' }}>
-                            Stop
-                          </button>
-                        ) : testSession && testSession.status === 'starting' ? (
+                        {testSession && testSession.status === 'success' ? (
+                          <a href={testSession.app_url} target="_blank" rel="noopener noreferrer" style={{ ...smallBtn, background: '#dcfce7', color: '#16a34a', textDecoration: 'none', display: 'inline-block' }}>
+                            ✓ Open App
+                          </a>
+                        ) : testSession && testSession.status === 'logging_in' ? (
                           <button disabled style={{ ...smallBtn, background: '#e5e7eb', color: '#9ca3af' }}>
-                            Starting…
+                            Logging in…
+                          </button>
+                        ) : testSession && testSession.status === 'error' ? (
+                          <button onClick={() => startManualTest(a.id)} style={{ ...smallBtn, background: '#fef2f2', color: '#dc2626' }}>
+                            ⚠ Retry
                           </button>
                         ) : (
                           <button onClick={() => startManualTest(a.id)} style={{ ...smallBtn, background: '#dbeafe', color: '#1e40af' }}>

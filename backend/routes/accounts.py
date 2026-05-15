@@ -111,11 +111,7 @@ async def delete_account(account_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{account_id}/manual-test/start")
 async def start_manual_test(account_id: int, db: Session = Depends(get_db)):
-    """Start a manual test session for an account (opens browser with auto-login) — local only"""
-    import os
-    if os.getenv("ENVIRONMENT") == "production":
-        raise HTTPException(503, "Manual test is not available on production. Use locally with run.bat")
-
+    """Start a manual test session for an account (opens browser with auto-login)"""
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise HTTPException(404, "Account not found")
