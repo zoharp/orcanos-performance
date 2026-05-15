@@ -10,6 +10,7 @@ from backend.models import Account
 from backend.services.database import get_db
 from backend.services.encryption import get_encryption_service
 from backend.services.auth import get_current_user, require_admin
+from backend.services.manual_tester import get_manual_tester_session
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -106,3 +107,36 @@ async def delete_account(account_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Account not found")
     db.delete(account)
     db.commit()
+
+
+@router.post("/{account_id}/manual-test/start")
+async def start_manual_test(account_id: int, db: Session = Depends(get_db)):
+    """Start a manual test session for an account (opens Chrome browser with auto-login)"""
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(404, "Account not found")
+
+    enc = get_encryption_service()
+    password = enc.decrypt(account.encrypted_password)
+
+    tester = get_manual_tester_session()
+    try:
+        tester.start(account_id, account.url, "orcanos.tech", password)
+        return {"status": "started", "account_id": account_id}
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post("/{account_id}/manual-test/stop")
+async def stop_manual_test(account_id: int):
+    """Stop a manual test session for an account"""
+    tester = get_manual_tester_session()
+    tester.stop(account_id)
+    return {"status": "stopped", "account_id": account_id}
+
+
+@router.get("/{account_id}/manual-test/status")
+async def get_manual_test_status(account_id: int):
+    """Get the status of a manual test session"""
+    tester = get_manual_tester_session()
+    return tester.get_status(account_id)
