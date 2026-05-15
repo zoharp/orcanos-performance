@@ -198,7 +198,7 @@ class RunnerSession:
 
                         if account_url:
                             logger.info(f"[{account_name}] Navigating to {account_url}")
-                            await page.goto(account_url, wait_until="load", timeout=step_timeout_ms)
+                            await page.goto(account_url, wait_until="domcontentloaded", timeout=step_timeout_ms)
                             logger.info(f"[{account_name}] Page loaded")
 
                         run_state_local = {'project_id': None}
@@ -246,7 +246,9 @@ class RunnerSession:
 
                             def on_request(req, _starts=step_req_starts):
                                 if req.resource_type in ("xhr", "fetch") and "app.orcanos.com" in req.url:
-                                    _starts[req] = time.monotonic()
+                                    # Skip background collection/telemetry endpoints
+                                    if "/collect" not in req.url and "/telemetry" not in req.url:
+                                        _starts[req] = time.monotonic()
 
                             def on_response(resp, _starts=step_req_starts, _reqs=step_requests, _step=step["name"], _acct=account_name):
                                 req = resp.request
@@ -270,7 +272,7 @@ class RunnerSession:
                             try:
                                 logger.debug(f"[{account_name}] Executing {action}...")
                                 if action == "navigate":
-                                    await page.goto(target, wait_until="load", timeout=step_timeout_ms)
+                                    await page.goto(target, wait_until="domcontentloaded", timeout=step_timeout_ms)
                                     # Try to extract project ID from page source after navigate
                                     try:
                                         pid = await page.evaluate("window.current_project || null")
@@ -293,7 +295,7 @@ class RunnerSession:
                                         await page.wait_for_selector(target, timeout=5000)
                                     await page.click(target, timeout=step_timeout_ms)
                                     try:
-                                        await page.wait_for_load_state("load", timeout=step_timeout_ms)
+                                        await page.wait_for_load_state("domcontentloaded", timeout=step_timeout_ms)
                                     except PlaywrightTimeout:
                                         pass
                                 logger.debug(f"[{account_name}] {action} completed")
