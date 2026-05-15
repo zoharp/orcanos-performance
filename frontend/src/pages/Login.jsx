@@ -8,7 +8,7 @@ export default function Login({ onLogin }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [showAdminLogin, setShowAdminLogin] = useState(false)
+  const isDevelopment = import.meta.env.MODE === 'development'
 
   useEffect(() => {
     const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
@@ -107,52 +107,56 @@ export default function Login({ onLogin }) {
 
         <div id="googleButton" style={{ marginBottom: 20 }}></div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <div style={{ flex: 1, height: 1, background: '#e5e7eb' }}></div>
-          <div style={{ fontSize: 12, color: '#9ca3af' }}>or</div>
-          <div style={{ flex: 1, height: 1, background: '#e5e7eb' }}></div>
-        </div>
-
-        <details style={{ cursor: 'pointer', marginBottom: 0 }}>
-          <summary style={{
-            fontSize: 13, fontWeight: 600, color: '#6b7280', padding: '8px 0',
-            userSelect: 'none',
-          }}>
-            Admin login
-          </summary>
-          <form onSubmit={handleSubmit} style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Username</label>
-              <input
-                style={inputStyle}
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                autoComplete="username"
-                required
-              />
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Password</label>
-              <input
-                style={inputStyle}
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
+        {isDevelopment && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <div style={{ flex: 1, height: 1, background: '#e5e7eb' }}></div>
+              <div style={{ fontSize: 12, color: '#9ca3af' }}>or</div>
+              <div style={{ flex: 1, height: 1, background: '#e5e7eb' }}></div>
             </div>
 
-            <button type="submit" disabled={loading} style={{
-              width: '100%', padding: '10px 0',
-              background: loading ? '#93c5fd' : '#2563eb',
-              color: '#fff', border: 'none', borderRadius: 8,
-              fontSize: 15, fontWeight: 600, cursor: loading ? 'default' : 'pointer',
-            }}>
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
-        </details>
+            <details style={{ cursor: 'pointer', marginBottom: 0 }}>
+              <summary style={{
+                fontSize: 13, fontWeight: 600, color: '#6b7280', padding: '8px 0',
+                userSelect: 'none',
+              }}>
+                Admin login (development only)
+              </summary>
+              <form onSubmit={handleSubmit} style={{ marginTop: 16 }}>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>Username</label>
+                  <input
+                    style={inputStyle}
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    autoComplete="username"
+                    required
+                  />
+                </div>
+                <div style={{ marginBottom: 20 }}>
+                  <label style={labelStyle}>Password</label>
+                  <input
+                    style={inputStyle}
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                </div>
+
+                <button type="submit" disabled={loading} style={{
+                  width: '100%', padding: '10px 0',
+                  background: loading ? '#93c5fd' : '#2563eb',
+                  color: '#fff', border: 'none', borderRadius: 8,
+                  fontSize: 15, fontWeight: 600, cursor: loading ? 'default' : 'pointer',
+                }}>
+                  {loading ? 'Signing in…' : 'Sign in'}
+                </button>
+              </form>
+            </details>
+          </>
+        )}
       </div>
     </div>
   )

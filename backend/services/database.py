@@ -41,6 +41,28 @@ def init_db():
             conn.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR(255)"))
             conn.commit()
 
+        # Make hashed_password nullable for Google OAuth users
+        # SQLite doesn't support ALTER COLUMN, so we check if it's already nullable
+        user_col_info = conn.execute(text("PRAGMA table_info(users)")).fetchall()
+        for col in user_col_info:
+            if col[1] == "hashed_password" and col[3] == 1:  # col[3] is notnull flag
+                # Rebuild table without NOT NULL on hashed_password
+                conn.execute(text("""
+                    CREATE TABLE users_new (
+                        id INTEGER PRIMARY KEY,
+                        username VARCHAR(100) NOT NULL UNIQUE,
+                        email VARCHAR(255) UNIQUE,
+                        hashed_password VARCHAR(256),
+                        role VARCHAR(20) NOT NULL DEFAULT 'user',
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                conn.execute(text("INSERT INTO users_new SELECT * FROM users"))
+                conn.execute(text("DROP TABLE users"))
+                conn.execute(text("ALTER TABLE users_new RENAME TO users"))
+                conn.commit()
+                break
+
     # Seed default users (idempotent)
     import os
     from backend.models import User
