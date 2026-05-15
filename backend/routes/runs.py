@@ -87,6 +87,32 @@ def stop_run(run_id: int):
     return {"status": "stopping"}
 
 
+@router.post("/force-reset")
+def force_reset_runner(db: Session = Depends(get_db)):
+    """Emergency endpoint to reset runner if stuck. Marks active runs as failed."""
+    from backend.services.runner import runner
+
+    if runner.active:
+        # Mark any running run as failed
+        for run_id, run_state in runner._runs.items():
+            if run_state.get("status") == "running":
+                run = db.query(TestRun).filter(TestRun.id == run_id).first()
+                if run:
+                    run.status = "failed"
+                    run.error_message = "Force reset due to timeout/hang"
+                    db.commit()
+
+        # Force reset the runner
+        runner.active = False
+        runner._current_page = None
+        runner._current_browser = None
+        runner._current_loop = None
+        runner._stop_event.clear()
+        runner._runs.clear()
+
+    return {"status": "reset", "message": "Runner has been force-reset"}
+
+
 @router.get("/{run_id}/progress")
 def get_run_progress(run_id: int, db: Session = Depends(get_db)):
     from backend.services.runner import runner

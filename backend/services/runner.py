@@ -42,6 +42,7 @@ class RunnerSession:
         self._stop_event = threading.Event()
         self._current_page = None
         self._current_browser = None
+        self._current_loop = None
 
     def start(self, run_id: int, scenario_name: str, accounts: List[dict]):
         with self._lock:
@@ -68,17 +69,40 @@ class RunnerSession:
 
     def stop(self):
         self._stop_event.set()
-        # Force close current page/browser to interrupt any waiting operations
+        # Force close browser from the asyncio loop context
+        loop = self._current_loop
+        if loop and loop.is_running():
+            if self._current_page:
+                asyncio.run_coroutine_threadsafe(self._safe_close_page(), loop)
+            if self._current_browser:
+                asyncio.run_coroutine_threadsafe(self._safe_close_browser(), loop)
+        else:
+            # Fallback: direct close (may fail but better than nothing)
+            if self._current_page:
+                try:
+                    self._current_page.close()
+                except Exception:
+                    pass
+            if self._current_browser:
+                try:
+                    import asyncio as aio
+                    asyncio.run(aio.sleep(0))  # no-op
+                except Exception:
+                    pass
+
+    async def _safe_close_page(self):
         if self._current_page:
             try:
-                self._current_page.close()
+                await self._current_page.close()
             except Exception:
                 pass
+
+    async def _safe_close_browser(self):
         if self._current_browser:
             try:
-                import asyncio
-                loop = asyncio.get_event_loop()
-                loop.create_task(self._current_browser.close())
+                await asyncio.wait_for(self._current_browser.close(), timeout=2)
+            except asyncio.TimeoutError:
+                logger.warning("[RUNNER] Browser close timeout during stop")
             except Exception:
                 pass
 
@@ -94,6 +118,8 @@ class RunnerSession:
     def _run(self, run_id: int, scenario_name: str, accounts: List[dict]):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        with self._lock:
+            self._current_loop = loop
         try:
             logger.info(f"[RUNNER] Starting run {run_id} with {len(accounts)} accounts")
             loop.run_until_complete(self._async_run(run_id, scenario_name, accounts))
@@ -106,6 +132,7 @@ class RunnerSession:
             loop.close()
             with self._lock:
                 self.active = False
+                self._current_loop = None
                 logger.info(f"[RUNNER] Run {run_id} completed with status: {self._runs[run_id].get('status')}")
 
     async def _async_run(self, run_id: int, scenario_name: str, accounts: List[dict]):

@@ -225,6 +225,21 @@ export default function Scenarios() {
     } catch {}
   }
 
+  async function forceResetRunner() {
+    if (!confirm('Force reset the runner? This will clear any stuck runs.')) return
+    try {
+      await fetchWithAuth(`${API}/api/runs/force-reset`, { method: 'POST' })
+      setRunningScenario(null)
+      setRunProgress(null)
+      clearInterval(runPollRef.current)
+      localStorage.removeItem('activeRunId')
+      setMessage({ type: 'success', text: 'Runner reset successfully.' })
+      loadScenarios()
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Failed to reset runner.' })
+    }
+  }
+
   async function toggleSteps(name) {
     if (expandedSteps[name]) {
       setExpandedSteps(prev => { const n = {...prev}; delete n[name]; return n })
@@ -349,11 +364,18 @@ export default function Scenarios() {
             <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>
               Run Progress &nbsp;<span style={badge(runProgress.status)}>{runProgress.status}</span>
             </h2>
-            {runProgress.status === 'running' && (
-              <button onClick={stopRun} style={{ ...smallBtn, background: '#fef2f2', color: '#dc2626', cursor: 'pointer', padding: '5px 12px' }}>
-                ■ Stop
-              </button>
-            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              {runProgress.status === 'running' && (
+                <button onClick={stopRun} style={{ ...smallBtn, background: '#fef2f2', color: '#dc2626', cursor: 'pointer', padding: '5px 12px' }}>
+                  ■ Stop
+                </button>
+              )}
+              {runProgress.status === 'running' && (
+                <button onClick={forceResetRunner} title="Force reset runner if stuck" style={{ ...smallBtn, background: '#fed7aa', color: '#92400e', cursor: 'pointer', padding: '5px 12px', fontSize: 11 }}>
+                  Force Reset
+                </button>
+              )}
+            </div>
           </div>
           <div style={{ fontSize: 14, color: '#374151', marginBottom: 6 }}>
             Accounts: {runProgress.completed_accounts} / {runProgress.total_accounts} completed
