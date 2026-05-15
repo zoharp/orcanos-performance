@@ -66,6 +66,9 @@ A centralized performance and stability monitoring tool for the Orcanos system. 
 - [x] Cross-customer project ID support — automatically extracts `window.current_project` from page source and replaces project IDs in scenario URLs (e.g., `/web/37/` → `/web/123/`) for different accounts
 - [x] Element visibility waiting — click/fill actions wait for elements to be visible before execution, plus 800ms delay for menu animations
 - [x] Improved error messages — includes target selector in error output for debugging
+- [x] Manual test feature — "Test" button on Accounts page auto-logs in and opens app in new tab
+- [x] Timing fix — changed to `domcontentloaded` instead of `load` to measure UX (not background resources)
+- [x] Request filtering — ignore `/collect` and `/telemetry` endpoints in request capture
 
 ### Next
 - [ ] Historical chart (Recharts) — trend over time per account/step
@@ -99,10 +102,11 @@ orcanos-performance/
 │   │   ├── database.py        ← SQLite engine, session, init_db (create_all + ALTER TABLE migrations)
 │   │   ├── encryption.py      ← Fernet AES-256 encrypt/decrypt
 │   │   ├── recorder.py        ← Playwright recording session (background thread)
-│   │   └── runner.py          ← Playwright headless replay, per-step timing, StepResult persistence
+│   │   ├── runner.py          ← Playwright headless replay, per-step timing, StepResult persistence
+│   │   └── manual_tester.py   ← Manual test session (headless login, returns app URL for user to open)
 │   └── routes/
 │       ├── auth.py            ← POST /api/auth/login, /logout, /verify
-│       ├── accounts.py        ← CRUD /api/accounts/
+│       ├── accounts.py        ← CRUD /api/accounts/, manual test /api/accounts/{id}/manual-test/{start|stop|status}
 │       ├── scenarios.py       ← /api/scenarios/record/*, list, get, edit, delete
 │       ├── runs.py            ← POST /api/runs/, GET /api/runs/{id}/progress
 │       ├── results.py         ← GET /api/results/runs, GET /api/results/run/{id}
@@ -137,7 +141,9 @@ orcanos-performance/
 
 **Recorder:** `backend/services/recorder.py` runs a `RecordingSession` singleton. Playwright runs in a background thread with its own asyncio loop. The API polls `/api/scenarios/record/status` every second during recording.
 
-**Runner:** `backend/services/runner.py` runs a `RunnerSession` singleton. Replays scenario steps headless per account. Timing thresholds are read from `config.json` (defaults: < 3s = pass, 3–8s = warning, > 8s = critical). **URL replacements:** (1) Replaces account name automatically (e.g. `/orcanos/` → `/acme/`); (2) Extracts `window.current_project` from page source and replaces project IDs in URLs (e.g. `/web/37/` → `/web/123/` for different customers). Click/fill actions wait for element visibility + 800ms delay for menu popups. Per-step Playwright listeners capture XHR/fetch requests to `app.orcanos.com` only (filters out analytics/CDN noise), recording `{method, url (path only), status, duration_ms}`. Stored in `StepResult.requests` (JSON) and pushed to `run_state["recent_requests"]` (capped at 500) for live polling. **Run timeout:** Entire run wrapped with `asyncio.wait_for()` timeout (default 5 min/account, configurable as `run_timeout_seconds` in `config.json`). If timeout exceeded, run marked as "timed_out" and DB updated.
+**Runner:** `backend/services/runner.py` runs a `RunnerSession` singleton. Replays scenario steps headless per account. Timing thresholds are read from `config.json` (defaults: < 3s = pass, 3–8s = warning, > 8s = critical). **URL replacements:** (1) Replaces account name automatically (e.g. `/orcanos/` → `/acme/`); (2) Extracts `window.current_project` from page source and replaces project IDs in URLs (e.g. `/web/37/` → `/web/123/` for different customers). Click/fill actions wait for element visibility + 800ms delay for menu popups. Per-step Playwright listeners capture XHR/fetch requests to `app.orcanos.com` only and filter out `/collect` and `/telemetry` endpoints (analytics/background noise), recording `{method, url (path only), status, duration_ms}`. Stored in `StepResult.requests` (JSON) and pushed to `run_state["recent_requests"]` (capped at 500) for live polling. **Timing measurement:** All `page.goto()` and `wait_for_load_state()` use `wait_until="domcontentloaded"` (not "load") to measure when the page becomes interactive (DOM ready) rather than waiting for all background resources. This reflects real user experience (2-3s) not infrastructure overhead. **Run timeout:** Entire run wrapped with `asyncio.wait_for()` timeout (default 5 min/account, configurable as `run_timeout_seconds` in `config.json`). If timeout exceeded, run marked as "timed_out" and DB updated.
+
+**Manual test:** `backend/services/manual_tester.py` runs a `ManualTesterSession` singleton. Provides "Test" button on Accounts page — when clicked, auto-logs in to an account headless, then returns the app URL. User clicks "✓ Open App" button to open the app in a new tab (already logged in). Useful for employees to manually test account behavior.
 
 **Passwords:** Stored encrypted in SQLite. `{{PASSWORD}}` placeholder in scenario steps is replaced at test runtime with the account's decrypted password.
 

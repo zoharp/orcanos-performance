@@ -91,9 +91,14 @@ class ManualTesterSession:
             asyncio.set_event_loop(asyncio.new_event_loop())
             loop = asyncio.get_event_loop()
             self._current_loop = loop
-            loop.run_until_complete(self._run_async(account_id, account_url, email, password))
+            loop.run_until_complete(asyncio.wait_for(self._run_async(account_id, account_url, email, password), timeout=60))
+        except asyncio.TimeoutError:
+            logger.error(f"[Account {account_id}] Manual test timed out after 60 seconds")
+            with self._lock:
+                if account_id in self.active_sessions:
+                    self.active_sessions[account_id]["error"] = "Login timeout (60s) - page took too long to load"
         except Exception as e:
-            logger.error(f"[Account {account_id}] Manual test error: {e}")
+            logger.error(f"[Account {account_id}] Manual test error: {e}", exc_info=True)
             with self._lock:
                 if account_id in self.active_sessions:
                     self.active_sessions[account_id]["error"] = str(e)[:200]
@@ -133,36 +138,36 @@ class ManualTesterSession:
                 # Navigate to login page
                 logger.info(f"[Account {account_id}] Navigating to {login_url}")
                 try:
-                    await page.goto(login_url, wait_until="domcontentloaded", timeout=15000)
+                    await asyncio.wait_for(page.goto(login_url, wait_until="domcontentloaded", timeout=20000), timeout=25)
                 except Exception as e:
                     # Try alternate login path with capital A
-                    logger.warning(f"[Account {account_id}] Failed to load {login_url}, trying /Account/Login")
+                    logger.warning(f"[Account {account_id}] Failed to load {login_url}, trying /Account/Login: {e}")
                     login_url_alt = account_url.rstrip('/') + '/Account/Login'
-                    await page.goto(login_url_alt, wait_until="domcontentloaded", timeout=15000)
+                    await asyncio.wait_for(page.goto(login_url_alt, wait_until="domcontentloaded", timeout=20000), timeout=25)
 
                 logger.info(f"[Account {account_id}] Page loaded, URL: {page.url}")
 
                 # Fill email
                 logger.info(f"[Account {account_id}] Waiting for login email field...")
-                await page.wait_for_selector("#kabab-login", state="visible", timeout=5000)
+                await asyncio.wait_for(page.wait_for_selector("#kabab-login", state="visible", timeout=10000), timeout=12)
                 await page.fill("#kabab-login", email)
                 logger.info(f"[Account {account_id}] Email filled")
 
                 # Fill password
                 logger.info(f"[Account {account_id}] Waiting for password field...")
-                await page.wait_for_selector("#kabab-password", state="visible", timeout=5000)
+                await asyncio.wait_for(page.wait_for_selector("#kabab-password", state="visible", timeout=10000), timeout=12)
                 await page.fill("#kabab-password", password)
                 logger.info(f"[Account {account_id}] Password filled")
 
                 # Click login
                 logger.info(f"[Account {account_id}] Waiting for login button...")
-                await page.wait_for_selector("#kabab-btn-loading", state="visible", timeout=5000)
+                await asyncio.wait_for(page.wait_for_selector("#kabab-btn-loading", state="visible", timeout=10000), timeout=12)
                 logger.info(f"[Account {account_id}] Clicking login button")
                 await page.click("#kabab-btn-loading")
 
                 # Wait for page to load
                 logger.info(f"[Account {account_id}] Waiting for page to load after login...")
-                await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                await asyncio.wait_for(page.wait_for_load_state("domcontentloaded", timeout=20000), timeout=25)
                 logger.info(f"[Account {account_id}] Login successful, final URL: {page.url}")
 
                 # Login successful - get the app URL
@@ -175,7 +180,7 @@ class ManualTesterSession:
                         self.active_sessions[account_id]["app_url"] = final_url
 
             except Exception as e:
-                logger.error(f"[Account {account_id}] Login failed: {e}")
+                logger.error(f"[Account {account_id}] Login failed: {e}", exc_info=True)
                 with self._lock:
                     if account_id in self.active_sessions:
                         self.active_sessions[account_id]["error"] = str(e)[:200]

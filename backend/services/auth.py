@@ -9,10 +9,13 @@ import bcrypt
 import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from google.oauth2 import id_token
+from google.auth.transport import requests
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-set-SECRET_KEY-in-env")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 
 security = HTTPBearer(auto_error=False)
 
@@ -50,3 +53,23 @@ def require_admin(user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+def verify_google_token(credential: str) -> dict:
+    """Verify Google ID token and extract claims."""
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Google OAuth not configured")
+    try:
+        claims = id_token.verify_oauth2_token(credential, requests.Request(), GOOGLE_CLIENT_ID)
+        email = claims.get("email", "")
+        if not email.endswith("@orcanos.com"):
+            raise HTTPException(status_code=403, detail="Access restricted to Orcanos employees (@orcanos.com)")
+        return {
+            "email": email,
+            "name": claims.get("name", ""),
+            "sub": claims.get("sub", ""),
+        }
+    except id_token.exceptions.GoogleAuthError:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")

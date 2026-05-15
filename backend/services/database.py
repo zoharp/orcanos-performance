@@ -36,6 +36,10 @@ def init_db():
         if "requests" not in sr_cols:
             conn.execute(text("ALTER TABLE step_results ADD COLUMN requests JSON"))
             conn.commit()
+        user_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(users)"))]
+        if "email" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR(255)"))
+            conn.commit()
 
     # Seed default users (idempotent)
     import os

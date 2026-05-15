@@ -16,7 +16,8 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(256), nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=True)
+    hashed_password = Column(String(256), nullable=True)
     role = Column(String(20), nullable=False, default="user")  # 'user' or 'admin'
     created_at = Column(DateTime, default=datetime.utcnow)
 

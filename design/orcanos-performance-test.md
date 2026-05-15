@@ -40,8 +40,10 @@ A JSON file contains all accounts to be tested:
 ```
 
 **Account URL Format:**
-- `https://app.orcanos.com/ACCOUNT/web` (US region)
-- `https://us.orcanos.com/ACCOUNT/web` (alternate)
+- `https://us.orcanos.com/ACCOUNT/web` (primary)
+- `https://app.orcanos.com/ACCOUNT/web` (alternate)
+
+Each account must use the correct base URL for its region.
 
 **Security:** Passwords are encrypted at rest; decrypted only at runtime.
 
@@ -118,6 +120,12 @@ A JSON file contains all accounts to be tested:
   - Run ID, timestamp, duration, pass/warn/fail counts
   - Click to view detailed results of that run
 - Ability to compare two runs side-by-side (optional MVP+)
+
+### Feature 6: Manual Test (Accounts Page)
+- "Test" button next to each account
+- Automatically logs in with stored credentials and opens the app in a new tab
+- Employees can manually test and explore account behavior
+- Available on both local development and production
 
 ---
 
