@@ -298,9 +298,19 @@ export default function Accounts() {
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         {testSession && testSession.status === 'success' ? (
-                          <a href={testSession.app_url} target="_blank" rel="noopener noreferrer" style={{ ...smallBtn, background: '#dcfce7', color: '#16a34a', textDecoration: 'none', display: 'inline-block' }}>
+                          <button onClick={() => {
+                            // Set cookies if available
+                            if (testSession.cookies) {
+                              const pairs = testSession.cookies.split('|')
+                              pairs.forEach(pair => {
+                                const [name, value] = pair.split('=')
+                                if (name && value) document.cookie = `${name}=${value}; path=/`
+                              })
+                            }
+                            window.open(testSession.app_url, '_blank')
+                          }} style={{ ...smallBtn, background: '#dcfce7', color: '#16a34a', border: 'none', cursor: 'pointer' }}>
                             ✓ Open App
-                          </a>
+                          </button>
                         ) : testSession && testSession.status === 'logging_in' ? (
                           <button disabled style={{ ...smallBtn, background: '#e5e7eb', color: '#9ca3af' }}>
                             Logging in…
