@@ -299,6 +299,11 @@ export default function Accounts() {
                       <td style={{ ...tdStyle, textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         {testSession && testSession.status === 'success' ? (
                           <button onClick={() => {
+                            console.log('Opening app:', testSession.app_url)
+                            if (!testSession.app_url) {
+                              alert('Error: No app URL. Try again.')
+                              return
+                            }
                             // Set cookies if available
                             if (testSession.cookies) {
                               const pairs = testSession.cookies.split('|')
