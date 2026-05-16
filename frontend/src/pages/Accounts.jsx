@@ -28,46 +28,7 @@ export default function Accounts() {
   const [editMessage, setEditMessage] = useState(null)
   const [editLoading, setEditLoading] = useState(false)
 
-  const [testingSessions, setTestingSessions] = useState({}) // {accountId: {status, timer, error}}
-
   useEffect(() => { loadAccounts() }, [])
-
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      // Poll status of active test sessions
-      const activeIds = Object.keys(testingSessions).filter(id => testingSessions[id].status === 'running')
-      if (activeIds.length === 0) return
-
-      for (const accountId of activeIds) {
-        try {
-          const res = await fetchWithAuth(`${API}/api/accounts/${accountId}/manual-test/status`)
-          const data = await res.json()
-
-          setTestingSessions(prev => ({
-            ...prev,
-            [accountId]: {
-              ...prev[accountId],
-              timer: data.inactivity_seconds,
-              status: data.status,
-              error: data.error,
-            }
-          }))
-
-          // Auto-stop if session closed
-          if (data.status === 'closed') {
-            setTimeout(() => {
-              setTestingSessions(prev => {
-                const newSessions = { ...prev }
-                delete newSessions[accountId]
-                return newSessions
-              })
-            }, 2000)
-          }
-        } catch {}
-      }
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [testingSessions])
 
   useEffect(() => { setPreview(extractAccountName(url)) }, [url])
 
@@ -163,31 +124,6 @@ export default function Accounts() {
     loadAccounts()
   }
 
-  async function startManualTest(id) {
-    setTestingSessions(prev => ({ ...prev, [id]: { status: 'starting', timer: 300, error: null } }))
-    try {
-      const res = await fetchWithAuth(`${API}/api/accounts/${id}/manual-test/start`, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) {
-        setTestingSessions(prev => ({ ...prev, [id]: { status: 'error', timer: 0, error: data.detail || 'Failed to start' } }))
-      } else {
-        setTestingSessions(prev => ({ ...prev, [id]: { status: 'running', timer: 300, error: null } }))
-      }
-    } catch (e) {
-      setTestingSessions(prev => ({ ...prev, [id]: { status: 'error', timer: 0, error: 'Network error' } }))
-    }
-  }
-
-  async function stopManualTest(id) {
-    try {
-      await fetchWithAuth(`${API}/api/accounts/${id}/manual-test/stop`, { method: 'POST' })
-    } catch {}
-    setTestingSessions(prev => {
-      const newSessions = { ...prev }
-      delete newSessions[id]
-      return newSessions
-    })
-  }
 
   return (
     <div style={{ padding: 24, maxWidth: 920, margin: '0 auto' }}>
@@ -273,18 +209,10 @@ export default function Accounts() {
                 </tr>
               </thead>
               <tbody>
-                {accounts.sort((a, b) => a.name.localeCompare(b.name)).map(a => {
-                  const testSession = testingSessions[a.id]
-                  const isTestingActive = testSession && testSession.status === 'running'
-                  return (
-                    <tr key={a.id} style={{ borderBottom: '1px solid #f3f4f6', background: isTestingActive ? '#fef3c7' : 'transparent' }}>
+                {accounts.sort((a, b) => a.name.localeCompare(b.name)).map(a => (
+                    <tr key={a.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                       <td style={{ ...tdStyle, fontWeight: 600 }}>
                         {a.name}
-                        {testSession && testSession.status === 'error' && (
-                          <div style={{ marginTop: 4, fontSize: 12, color: '#dc2626' }}>
-                            ⚠ {testSession.error}
-                          </div>
-                        )}
                       </td>
                       <td style={{ ...tdStyle, color: '#6b7280' }}>{a.version || '—'}</td>
                       <td style={tdStyle}>
@@ -297,38 +225,7 @@ export default function Accounts() {
                         </span>
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        {testSession && testSession.status === 'success' ? (
-                          <button onClick={() => {
-                            console.log('Opening app:', testSession.app_url)
-                            if (!testSession.app_url) {
-                              alert('Error: No app URL. Try again.')
-                              return
-                            }
-                            // Set cookies if available
-                            if (testSession.cookies) {
-                              const pairs = testSession.cookies.split('|')
-                              pairs.forEach(pair => {
-                                const [name, value] = pair.split('=')
-                                if (name && value) document.cookie = `${name}=${value}; path=/`
-                              })
-                            }
-                            window.open(testSession.app_url, '_blank')
-                          }} style={{ ...smallBtn, background: '#dcfce7', color: '#16a34a', border: 'none', cursor: 'pointer' }}>
-                            ✓ Open App
-                          </button>
-                        ) : testSession && testSession.status === 'logging_in' ? (
-                          <button disabled style={{ ...smallBtn, background: '#e5e7eb', color: '#9ca3af' }}>
-                            Logging in…
-                          </button>
-                        ) : testSession && testSession.status === 'error' ? (
-                          <button onClick={() => startManualTest(a.id)} style={{ ...smallBtn, background: '#fef2f2', color: '#dc2626' }}>
-                            ⚠ Retry
-                          </button>
-                        ) : (
-                          <button onClick={() => startManualTest(a.id)} style={{ ...smallBtn, background: '#dbeafe', color: '#1e40af' }}>
-                            Test
-                          </button>
-                        )}
+                        <button onClick={() => window.open(a.url, '_blank')} style={{ ...smallBtn, background: '#dbeafe', color: '#1e40af' }}>Test</button>
                         <button onClick={() => openEdit(a)} style={{ ...smallBtn, background: '#eff6ff', color: '#2563eb' }}>Edit</button>
                         <button onClick={() => toggleAccount(a.id, a.enabled)} style={{ ...smallBtn, background: '#f3f4f6', color: '#374151' }}>
                           {a.enabled ? 'Disable' : 'Enable'}
@@ -338,8 +235,7 @@ export default function Accounts() {
                         )}
                       </td>
                     </tr>
-                  )
-                })}
+                ))}
               </tbody>
             </table>
           </div>
