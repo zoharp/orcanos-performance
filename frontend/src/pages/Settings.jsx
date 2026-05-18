@@ -29,6 +29,7 @@ export default function Settings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           step_timeout_seconds: Number(form.step_timeout_seconds),
+          run_timeout_seconds: Number(form.run_timeout_seconds),
           pass_threshold_seconds: Number(form.pass_threshold_seconds),
           warn_threshold_seconds: Number(form.warn_threshold_seconds),
         }),
@@ -90,6 +91,13 @@ export default function Settings() {
             unit="seconds"
             value={form.step_timeout_seconds}
             onChange={v => set('step_timeout_seconds', v)}
+          />
+          <Field
+            label="Run timeout (per account)"
+            hint="Max time allowed per account — account is skipped if exceeded"
+            unit="seconds"
+            value={form.run_timeout_seconds}
+            onChange={v => set('run_timeout_seconds', v)}
           />
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 4, borderTop: '1px solid #f3f4f6' }}>

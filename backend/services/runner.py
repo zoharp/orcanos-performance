@@ -146,6 +146,7 @@ class RunnerSession:
         step_timeout_ms = step_timeout_s * 1000
         pass_t = float(config.get("pass_threshold_seconds", 3))
         warn_t = float(config.get("warn_threshold_seconds", 8))
+        run_timeout_s = int(config.get("run_timeout_seconds", 300))
 
         scenario_path = SCENARIOS_DIR / f"{scenario_name}.json"
         scenario = json.loads(scenario_path.read_text())
@@ -191,6 +192,7 @@ class RunnerSession:
                         browser = await p.chromium.launch(headless=True)
                         page = await browser.new_page()
                         timed_out = False
+                        account_deadline = time.monotonic() + run_timeout_s
 
                         with self._lock:
                             self._current_browser = browser
@@ -328,7 +330,9 @@ class RunnerSession:
                             db.add(sr)
                             db.commit()
 
-                            if step_timed_out or self._stop_event.is_set():
+                            if step_timed_out or self._stop_event.is_set() or time.monotonic() > account_deadline:
+                                if time.monotonic() > account_deadline:
+                                    logger.error(f"[{account_name}] Account run timeout ({run_timeout_s}s) exceeded")
                                 timed_out = True
                                 break  # skip remaining steps for this account
 
@@ -362,7 +366,8 @@ class RunnerSession:
                         with self._lock:
                             self._runs[run_id]["error"] = error_msg
                             self._runs[run_id]["failed_at_account"] = account_name
-                        raise
+                            self._runs[run_id]["completed_accounts"] += 1
+                        # Continue to next account rather than aborting the entire run
                     finally:
                         db.close()
 

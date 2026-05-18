@@ -1,5 +1,6 @@
 {
   "step_timeout_seconds": 60,
+  "run_timeout_seconds": 300,
   "pass_threshold_seconds": 5.0,
   "warn_threshold_seconds": 10.0,
   "batch_size": 30,
