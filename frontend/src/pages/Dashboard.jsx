@@ -78,7 +78,7 @@ function Sparkline({ data }) {
     y: H - PAD - ((v - min) / range) * (H - PAD * 2),
   }))
   const pts = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-  const diff = vals[vals.length - 1] - vals[vals.length - 2]
+  const diff = vals[vals.length - 1] - vals[0]
   const trendColor = diff <= 0 ? '#16a34a' : '#dc2626'
   const trendArrow = diff <= 0 ? '▼' : '▲'
   const lastPt = points[points.length - 1]
