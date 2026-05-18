@@ -120,6 +120,10 @@ def get_run_progress(run_id: int, db: Session = Depends(get_db)):
     if not progress:
         run = db.query(TestRun).filter(TestRun.id == run_id).first()
         if run:
+            if run.status == "running" and not runner.active:
+                run.status = "failed"
+                run.completed_at = datetime.utcnow()
+                db.commit()
             return {
                 "status": run.status,
                 "run_id": run_id,

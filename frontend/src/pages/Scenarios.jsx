@@ -40,12 +40,14 @@ export default function Scenarios() {
 
   const [accounts, setAccounts] = useState([])
   const [selectedAccounts, setSelectedAccounts] = useState({})
-  const [expandedSteps, setExpandedSteps] = useState({}) // scenarioName -> steps[]
+  const [expandedSteps, setExpandedSteps] = useState({})
 
   const [editingScenario, setEditingScenario] = useState(null)
   const [editForm, setEditForm] = useState({ name: '', version: '' })
   const [editMessage, setEditMessage] = useState(null)
   const [editLoading, setEditLoading] = useState(false)
+
+  const [testingStates, setTestingStates] = useState({})
 
   useEffect(() => {
     loadScenarios()
@@ -208,7 +210,6 @@ export default function Scenarios() {
     if (!saved) return
     try {
       await fetchWithAuth(`${API}/api/runs/${saved}/stop`, { method: 'POST' })
-      // Immediately poll for updated status
       setTimeout(async () => {
         try {
           const res = await fetchWithAuth(`${API}/api/runs/${saved}/progress`)
@@ -235,7 +236,7 @@ export default function Scenarios() {
       localStorage.removeItem('activeRunId')
       setMessage({ type: 'success', text: 'Runner reset successfully.' })
       loadScenarios()
-    } catch (e) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to reset runner.' })
     }
   }
@@ -285,6 +286,17 @@ export default function Scenarios() {
       setEditMessage({ type: 'error', text: 'Cannot reach backend.' })
     }
     setEditLoading(false)
+  }
+
+  async function openTest(scenarioName, accountId) {
+    setTestingStates(prev => ({ ...prev, [scenarioName]: 'testing' }))
+    try {
+      await fetchWithAuth(`${API}/api/accounts/${accountId}/manual-test/start`, { method: 'POST' })
+      const res = await fetchWithAuth(`${API}/api/accounts/${accountId}/manual-test/status`)
+      const data = await res.json()
+      if (data.app_url) window.open(data.app_url, '_blank')
+    } catch {}
+    setTestingStates(prev => ({ ...prev, [scenarioName]: null }))
   }
 
   return (
@@ -393,7 +405,6 @@ export default function Scenarios() {
             }} />
           </div>
 
-          {/* Live API call feed */}
           {(runProgress.recent_requests?.length > 0) && (
             <div style={{ marginTop: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 4, letterSpacing: 0.3 }}>
@@ -439,100 +450,115 @@ export default function Scenarios() {
                 <th style={th}>Name</th>
                 <th style={th}>Version</th>
                 <th style={th}>Steps</th>
+                <th style={th}>Accounts</th>
                 <th style={th}>Created</th>
                 <th style={th}></th>
               </tr>
             </thead>
             <tbody>
-              {scenarios.map(s => (
-                <React.Fragment key={s.name}>
-                <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={td}><strong>{s.name}</strong></td>
-                  <td style={{ ...td, color: '#6b7280', fontSize: 13 }}>{s.version || '—'}</td>
-                  <td style={td}>{s.step_count}</td>
-                  <td style={{ ...td, color: '#6b7280', fontSize: 12 }}>
-                    {s.created_at ? new Date(s.created_at).toLocaleString() : '—'}
-                  </td>
-                  <td style={{ ...td, display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <select
-                      value={selectedAccounts[s.name] || 'all'}
-                      onChange={e => setSelectedAccounts(prev => ({ ...prev, [s.name]: e.target.value }))}
-                      disabled={!!runningScenario}
-                      style={{ padding: '3px 6px', fontSize: 12, borderRadius: 4, border: '1px solid #d1d5db', color: '#374151' }}
-                    >
-                      <option value="all">All accounts</option>
-                      {accounts
-                        .filter(a => a.enabled && (!s.version || a.version === s.version))
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .map(a => <option key={a.id} value={a.id}>{a.name}</option>)
-                      }
-                    </select>
-                    <button
-                      onClick={() => runScenario(s.name)}
-                      disabled={!!runningScenario}
-                      style={{
-                        ...smallBtn,
-                        background: runningScenario === s.name ? '#bfdbfe' : '#2563eb',
-                        color: '#fff',
-                        cursor: runningScenario ? 'default' : 'pointer',
-                      }}
-                    >
-                      {runningScenario === s.name ? 'Running…' : '▶ Run'}
-                    </button>
-                    <button
-                      onClick={() => toggleSteps(s.name)}
-                      style={{ ...smallBtn, background: expandedSteps[s.name] ? '#f3f4f6' : '#f9fafb', color: '#374151', cursor: 'pointer' }}
-                    >
-                      {expandedSteps[s.name] ? '▲ Steps' : '▼ Steps'}
-                    </button>
-                    <button
-                      onClick={() => openEditScenario(s)}
-                      style={{ ...smallBtn, background: '#eff6ff', color: '#2563eb', cursor: 'pointer' }}
-                    >
-                      Edit
-                    </button>
-                    {isAdmin() && (
-                      <button
-                        onClick={() => deleteScenario(s.name)}
-                        style={{ ...smallBtn, background: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}
+              {scenarios.map(s => {
+                const selectedAcct = selectedAccounts[s.name]
+                const isSingleAccount = selectedAcct && selectedAcct !== 'all'
+                return (
+                  <React.Fragment key={s.name}>
+                  <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td style={td}><strong>{s.name}</strong></td>
+                    <td style={{ ...td, color: '#6b7280', fontSize: 13 }}>{s.version || '—'}</td>
+                    <td style={td}>{s.step_count}</td>
+                    <td style={{ ...td, color: '#6b7280', fontSize: 13 }}>{s.account_count ?? '—'}</td>
+                    <td style={{ ...td, color: '#6b7280', fontSize: 12 }}>
+                      {s.created_at ? new Date(s.created_at).toLocaleString() : '—'}
+                    </td>
+                    <td style={{ ...td, display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <select
+                        value={selectedAccounts[s.name] || 'all'}
+                        onChange={e => setSelectedAccounts(prev => ({ ...prev, [s.name]: e.target.value }))}
+                        disabled={!!runningScenario}
+                        style={{ padding: '3px 6px', fontSize: 12, borderRadius: 4, border: '1px solid #d1d5db', color: '#374151' }}
                       >
-                        Delete
+                        <option value="all">All accounts</option>
+                        {accounts
+                          .filter(a => a.enabled && (!s.version || a.version === s.version))
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map(a => <option key={a.id} value={a.id}>{a.name}</option>)
+                        }
+                      </select>
+                      <button
+                        onClick={() => runScenario(s.name)}
+                        disabled={!!runningScenario}
+                        style={{
+                          ...smallBtn,
+                          background: runningScenario === s.name ? '#bfdbfe' : '#2563eb',
+                          color: '#fff',
+                          cursor: runningScenario ? 'default' : 'pointer',
+                        }}
+                      >
+                        {runningScenario === s.name ? 'Running…' : '▶ Run'}
                       </button>
-                    )}
-                  </td>
-                </tr>
-                {expandedSteps[s.name] && (
-                  <tr>
-                    <td colSpan={5} style={{ padding: '0 12px 12px 12px', background: '#f9fafb' }}>
-                      <div style={{ borderRadius: 6, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-                        {expandedSteps[s.name].map((step, i) => (
-                          <div key={i} style={{
-                            display: 'flex', alignItems: 'center', gap: 10,
-                            padding: '6px 12px', fontSize: 12, color: '#374151',
-                            borderBottom: i < expandedSteps[s.name].length - 1 ? '1px solid #f3f4f6' : 'none',
-                            background: i % 2 === 0 ? '#fff' : '#f9fafb',
-                          }}>
-                            <span style={{ color: '#9ca3af', minWidth: 20, textAlign: 'right' }}>{i + 1}.</span>
-                            <span style={{
-                              display: 'inline-block', padding: '1px 6px', borderRadius: 3, fontSize: 10, fontWeight: 600,
-                              background: step.action === 'click' ? '#dbeafe' : step.action === 'fill' ? '#dcfce7' : '#f3f4f6',
-                              color: step.action === 'click' ? '#2563eb' : step.action === 'fill' ? '#16a34a' : '#6b7280',
-                              minWidth: 48, textAlign: 'center',
-                            }}>
-                              {step.action}
-                            </span>
-                            <span style={{ flex: 1 }}>{step.name}</span>
-                            {step.value && step.value !== '{{PASSWORD}}' && (
-                              <span style={{ color: '#9ca3af', fontSize: 11 }}>{step.value}</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                      {isSingleAccount && (
+                        <button
+                          onClick={() => openTest(s.name, selectedAcct)}
+                          disabled={!!runningScenario || testingStates[s.name] === 'testing'}
+                          style={{ ...smallBtn, background: '#f0fdf4', color: '#16a34a', cursor: 'pointer' }}
+                        >
+                          {testingStates[s.name] === 'testing' ? '…' : '↗ Test'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => toggleSteps(s.name)}
+                        style={{ ...smallBtn, background: expandedSteps[s.name] ? '#f3f4f6' : '#f9fafb', color: '#374151', cursor: 'pointer' }}
+                      >
+                        {expandedSteps[s.name] ? '▲ Steps' : '▼ Steps'}
+                      </button>
+                      <button
+                        onClick={() => openEditScenario(s)}
+                        style={{ ...smallBtn, background: '#eff6ff', color: '#2563eb', cursor: 'pointer' }}
+                      >
+                        Edit
+                      </button>
+                      {isAdmin() && (
+                        <button
+                          onClick={() => deleteScenario(s.name)}
+                          style={{ ...smallBtn, background: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
-                )}
-                </React.Fragment>
-              ))}
+                  {expandedSteps[s.name] && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '0 12px 12px 12px', background: '#f9fafb' }}>
+                        <div style={{ borderRadius: 6, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                          {expandedSteps[s.name].map((step, i) => (
+                            <div key={i} style={{
+                              display: 'flex', alignItems: 'center', gap: 10,
+                              padding: '6px 12px', fontSize: 12, color: '#374151',
+                              borderBottom: i < expandedSteps[s.name].length - 1 ? '1px solid #f3f4f6' : 'none',
+                              background: i % 2 === 0 ? '#fff' : '#f9fafb',
+                            }}>
+                              <span style={{ color: '#9ca3af', minWidth: 20, textAlign: 'right' }}>{i + 1}.</span>
+                              <span style={{
+                                display: 'inline-block', padding: '1px 6px', borderRadius: 3, fontSize: 10, fontWeight: 600,
+                                background: step.action === 'click' ? '#dbeafe' : step.action === 'fill' ? '#dcfce7' : '#f3f4f6',
+                                color: step.action === 'click' ? '#2563eb' : step.action === 'fill' ? '#16a34a' : '#6b7280',
+                                minWidth: 48, textAlign: 'center',
+                              }}>
+                                {step.action}
+                              </span>
+                              <span style={{ flex: 1 }}>{step.name}</span>
+                              {step.value && step.value !== '{{PASSWORD}}' && (
+                                <span style={{ color: '#9ca3af', fontSize: 11 }}>{step.value}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                )
+              })}
             </tbody>
           </table>
         )}

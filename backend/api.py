@@ -24,7 +24,25 @@ from backend.routes.config import router as config_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _mark_orphaned_runs_failed()
     yield
+
+
+def _mark_orphaned_runs_failed():
+    from backend.services.database import SessionLocal
+    from backend.models import TestRun
+    from datetime import datetime
+    db = SessionLocal()
+    try:
+        stuck = db.query(TestRun).filter(TestRun.status == "running").all()
+        for run in stuck:
+            run.status = "failed"
+            run.completed_at = datetime.utcnow()
+        if stuck:
+            db.commit()
+            print(f"[STARTUP] Marked {len(stuck)} orphaned run(s) as failed")
+    finally:
+        db.close()
 
 
 app = FastAPI(

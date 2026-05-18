@@ -5,8 +5,11 @@ Scenario management routes — recording and listing
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from pathlib import Path
+from sqlalchemy.orm import Session
 import json
 from backend.services.auth import get_current_user, require_admin
+from backend.services.database import get_db
+from backend.models import Account
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -54,19 +57,24 @@ def recording_status():
 
 
 @router.get("")
-def list_scenarios():
+def list_scenarios(db: Session = Depends(get_db)):
     if not SCENARIOS_DIR.exists():
         return []
     result = []
     for f in sorted(SCENARIOS_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
         try:
             data = json.loads(f.read_text())
+            version = data.get("version", "")
+            q = db.query(Account).filter(Account.enabled == True)
+            if version:
+                q = q.filter(Account.version == version)
             result.append({
                 "name": data["name"],
-                "version": data.get("version", ""),
+                "version": version,
                 "base_url": data.get("base_url", ""),
                 "step_count": len(data.get("steps", [])),
                 "created_at": data.get("created_at", ""),
+                "account_count": q.count(),
             })
         except Exception:
             pass
