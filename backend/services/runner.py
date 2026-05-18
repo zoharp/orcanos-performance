@@ -384,6 +384,9 @@ class RunnerSession:
                 finally:
                     db_final.close()
 
+                from backend.routes.results import refresh_summary_cache
+                refresh_summary_cache()
+
                 with self._lock:
                     self._runs[run_id]["status"] = final_status
                     self._runs[run_id]["current_account"] = None

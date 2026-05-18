@@ -3,7 +3,7 @@ Database models for Orcanos Performance Testing Tool
 Using SQLAlchemy ORM
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, Float, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -81,3 +81,11 @@ class StepResult(Base):
     # Relationships
     test_run = relationship("TestRun", back_populates="step_results")
     account = relationship("Account", back_populates="step_results")
+
+
+class SummaryCache(Base):
+    __tablename__ = "summary_cache"
+
+    id = Column(Integer, primary_key=True, default=1)
+    computed_at = Column(DateTime, default=datetime.utcnow)
+    data = Column(JSON)

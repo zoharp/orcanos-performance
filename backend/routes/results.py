@@ -6,9 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
-from backend.models import StepResult, TestRun, Account
-from backend.services.database import get_db
+from backend.models import StepResult, TestRun, Account, SummaryCache
+from backend.services.database import get_db, SessionLocal
 from backend.services.auth import get_current_user
+import logging
+
+logger = logging.getLogger("results")
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -21,7 +24,6 @@ def get_run_results(run_id: int, db: Session = Depends(get_db)):
 
     step_results = db.query(StepResult).filter(StepResult.run_id == run_id).all()
 
-    # Group by account
     accounts_map = {}
     for sr in step_results:
         acct = db.query(Account).filter(Account.id == sr.account_id).first()
@@ -49,8 +51,34 @@ def get_run_results(run_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/runs")
+def list_runs_summary(db: Session = Depends(get_db)):
+    runs = db.query(TestRun).order_by(TestRun.started_at.desc()).limit(50).all()
+    return [
+        {
+            "id": r.id,
+            "scenario_name": r.scenario_name,
+            "status": r.status,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+        }
+        for r in runs
+    ]
+
+
 @router.get("/summary")
 def get_summary(db: Session = Depends(get_db)):
+    cache = db.query(SummaryCache).filter(SummaryCache.id == 1).first()
+    if cache and cache.data:
+        return cache.data
+    data = _compute_summary(db)
+    _save_summary_cache(db, data)
+    return data
+
+
+# ── Internal helpers ──────────────────────────────────────────────────────────
+
+def _compute_summary(db: Session) -> dict:
     runs = db.query(TestRun).filter(
         TestRun.status.in_(["completed", "stopped"])
     ).order_by(TestRun.started_at.asc()).limit(30).all()
@@ -66,7 +94,11 @@ def get_summary(db: Session = Depends(get_db)):
     if account_ids:
         accounts_map = {a.id: a.name for a in db.query(Account).filter(Account.id.in_(account_ids)).all()}
 
-    run_totals = {r.id: {"run_id": r.id, "scenario_name": r.scenario_name, "started_at": r.started_at, "total": 0.0} for r in runs}
+    # Per-run totals + distinct account sets for normalization
+    run_totals: dict = {
+        r.id: {"run_id": r.id, "scenario_name": r.scenario_name, "started_at": r.started_at, "total": 0.0, "acct_ids": set()}
+        for r in runs
+    }
     account_times: dict = {}
     account_step_counts: dict = {}
     step_times: dict = {}
@@ -76,6 +108,7 @@ def get_summary(db: Session = Depends(get_db)):
         dur = sr.duration_seconds or 0.0
         if sr.run_id in run_totals:
             run_totals[sr.run_id]["total"] += dur
+            run_totals[sr.run_id]["acct_ids"].add(sr.account_id)
         if sr.status not in ("failed", "timeout") and dur > 0:
             name = accounts_map.get(sr.account_id, f"account_{sr.account_id}")
             account_times[name] = account_times.get(name, 0.0) + dur
@@ -83,18 +116,20 @@ def get_summary(db: Session = Depends(get_db)):
             step_times[sr.step_name] = step_times.get(sr.step_name, 0.0) + dur
             step_counts[sr.step_name] = step_counts.get(sr.step_name, 0) + 1
 
-    trend = [
-        {
+    # Trend: avg per account so runs with different account counts are comparable
+    trend = []
+    for v in run_totals.values():
+        n = max(len(v["acct_ids"]), 1)
+        trend.append({
             "run_id": v["run_id"],
             "scenario_name": v["scenario_name"],
             "started_at": v["started_at"].isoformat() if v["started_at"] else None,
-            "total_seconds": round(v["total"], 1),
-        }
-        for v in run_totals.values()
-    ]
+            "avg_per_account_seconds": round(v["total"] / n, 1),
+            "account_count": n,
+        })
 
-    run_total_values = [v["total"] for v in run_totals.values() if v["total"] > 0]
-    avg_scenario_seconds = round(sum(run_total_values) / len(run_total_values), 1) if run_total_values else None
+    per_run_avgs = [round(v["total"] / max(len(v["acct_ids"]), 1), 1) for v in run_totals.values() if v["total"] > 0]
+    avg_scenario_seconds = round(sum(per_run_avgs) / len(per_run_avgs), 1) if per_run_avgs else None
 
     slowest_account = None
     if account_times:
@@ -116,16 +151,24 @@ def get_summary(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/runs")
-def list_runs_summary(db: Session = Depends(get_db)):
-    runs = db.query(TestRun).order_by(TestRun.started_at.desc()).limit(50).all()
-    return [
-        {
-            "id": r.id,
-            "scenario_name": r.scenario_name,
-            "status": r.status,
-            "started_at": r.started_at.isoformat() if r.started_at else None,
-            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
-        }
-        for r in runs
-    ]
+def _save_summary_cache(db: Session, data: dict):
+    cache = db.query(SummaryCache).filter(SummaryCache.id == 1).first()
+    if cache:
+        cache.data = data
+        cache.computed_at = datetime.utcnow()
+    else:
+        db.add(SummaryCache(id=1, data=data, computed_at=datetime.utcnow()))
+    db.commit()
+
+
+def refresh_summary_cache():
+    """Recompute and persist summary cache. Called by runner after each run."""
+    db = SessionLocal()
+    try:
+        data = _compute_summary(db)
+        _save_summary_cache(db, data)
+        logger.info("[SUMMARY] Cache refreshed")
+    except Exception as e:
+        logger.warning(f"[SUMMARY] Cache refresh failed: {e}")
+    finally:
+        db.close()

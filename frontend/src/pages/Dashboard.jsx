@@ -68,7 +68,7 @@ function Sparkline({ data }) {
   if (!data || data.length < 2) {
     return <span style={{ color: '#9ca3af', fontSize: 12 }}>Not enough data</span>
   }
-  const vals = data.map(d => d.total_seconds).slice(-10)
+  const vals = data.map(d => d.avg_per_account_seconds).slice(-10)
   const min = Math.min(...vals)
   const max = Math.max(...vals)
   const range = max - min || 1
@@ -205,11 +205,11 @@ export default function Dashboard() {
               </>
             ) : <span style={{ color: '#9ca3af', fontSize: 13 }}>No data</span>}
           </SCard>
-          <SCard title="Avg Scenario Time">
+          <SCard title="Avg Time / Account">
             {summary.avg_scenario_seconds != null ? (
               <>
                 <div style={{ fontSize: 22, fontWeight: 700, color: '#2563eb' }}>{summary.avg_scenario_seconds}s</div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>across {summary.trend.length} runs</div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>avg across {summary.trend.length} runs</div>
               </>
             ) : <span style={{ color: '#9ca3af', fontSize: 13 }}>No data</span>}
           </SCard>

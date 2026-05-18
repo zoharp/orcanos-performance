@@ -63,6 +63,11 @@ def init_db():
                 conn.commit()
                 break
 
+        tables = [row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))]
+        if "summary_cache" not in tables:
+            conn.execute(text("CREATE TABLE summary_cache (id INTEGER PRIMARY KEY, computed_at DATETIME, data JSON)"))
+            conn.commit()
+
     # Seed default users (idempotent)
     import os
     from backend.models import User
